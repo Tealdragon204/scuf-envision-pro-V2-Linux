@@ -1,0 +1,23 @@
+[Unit]
+Description=SCUF Envision Pro V2 Controller Bridge
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m scuf_envision
+WorkingDirectory=/opt/scuf-envision
+Restart=on-failure
+RestartSec=3
+
+# Run as root for device access (udev rules allow non-root but grab needs it)
+# Alternatively, run as your user if udev rules + uinput group are configured
+User=root
+
+# Hardening
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/dev/input /dev/uinput /dev/hidraw0 /dev/hidraw1 /dev/hidraw2 /dev/hidraw3 /dev/hidraw4 /dev/hidraw5 /dev/hidraw6 /dev/hidraw7 /dev/hidraw8 /dev/hidraw9 /dev/hidraw10 /dev/hidraw11 /dev/hidraw12 /dev/hidraw13 /dev/hidraw14 /dev/hidraw15 /dev/hidraw16 /dev/hidraw17 /dev/hidraw18 /dev/hidraw19 /dev/hidraw20
+ReadOnlyPaths=/sys/class/input /sys/class/hidraw
+
+[Install]
+WantedBy=multi-user.target
