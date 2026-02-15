@@ -61,6 +61,8 @@ def scan_all_scuf_devices():
     target_pids = {SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER}
     sysfs_dirs = sorted(glob.glob("/sys/class/input/event*"), key=_event_number)
     found = []
+    wired_count = 0
+    wireless_count = 0
 
     for sysfs_dir in sysfs_dirs:
         vid, pid = _get_vid_pid(sysfs_dir)
@@ -69,6 +71,10 @@ def scan_all_scuf_devices():
             event_path = f"/dev/input/{event_name}"
             has_js = _has_joystick_handler(sysfs_dir)
             found.append((event_path, has_js))
+            if pid == SCUF_PRODUCT_ID_WIRED:
+                wired_count += 1
+            else:
+                wireless_count += 1
 
             try:
                 dev = evdev.InputDevice(event_path)
@@ -112,6 +118,13 @@ def scan_all_scuf_devices():
                 print("    Axes: none")
 
             print()
+
+    # Print per-connection-type summary
+    print(f"Searching for wired controller (1b1c:{SCUF_PRODUCT_ID_WIRED:04x})... "
+          f"{'found ' + str(wired_count) + ' device(s)' if wired_count else 'not found'}")
+    print(f"Searching for wireless receiver (1b1c:{SCUF_PRODUCT_ID_RECEIVER:04x})... "
+          f"{'found ' + str(wireless_count) + ' device(s)' if wireless_count else 'not found'}")
+    print()
 
     # Also show hidraw devices
     print("SCUF hidraw devices:")
