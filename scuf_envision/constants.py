@@ -29,8 +29,8 @@ SCUF_PRODUCT_ID_RECEIVER = 0x3A09  # SCUF Envision Pro Wireless USB Receiver V2
 BUTTON_MAP = {
     ecodes.BTN_SOUTH:          ecodes.BTN_SOUTH,          # A -> A
     ecodes.BTN_EAST:           ecodes.BTN_EAST,           # B -> B
-    ecodes.BTN_C:              ecodes.BTN_WEST,           # SCUF sends BTN_C for X
-    ecodes.BTN_NORTH:          ecodes.BTN_NORTH,          # Y -> Y
+    ecodes.BTN_C:              ecodes.BTN_NORTH,          # SCUF sends BTN_C for X -> BTN_NORTH (kernel: BTN_X=BTN_NORTH)
+    ecodes.BTN_NORTH:          ecodes.BTN_WEST,           # Y -> BTN_WEST (kernel: BTN_Y=BTN_WEST)
     ecodes.BTN_WEST:           ecodes.BTN_TL,             # SCUF sends BTN_WEST for LB
     ecodes.BTN_Z:              ecodes.BTN_TR,             # SCUF sends BTN_Z for RB
     ecodes.BTN_TL:             ecodes.BTN_SELECT,         # SCUF sends BTN_TL for Select/Back

@@ -429,8 +429,8 @@ echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf
 |---|---|---|
 | A | BTN_SOUTH (0x130) | BTN_SOUTH (0x130) |
 | B | BTN_EAST (0x131) | BTN_EAST (0x131) |
-| X | BTN_C (0x132) | BTN_WEST (0x134) |
-| Y | BTN_NORTH (0x133) | BTN_NORTH (0x133) |
+| X | BTN_C (0x132) | BTN_NORTH (0x133) — kernel alias BTN_X |
+| Y | BTN_NORTH (0x133) | BTN_WEST (0x134) — kernel alias BTN_Y |
 | LB (Left Bumper) | BTN_WEST (0x134) | BTN_TL (0x136) |
 | RB (Right Bumper) | BTN_Z (0x135) | BTN_TR (0x137) |
 | Select / Back | BTN_TL (0x136) | BTN_SELECT (0x13a) |

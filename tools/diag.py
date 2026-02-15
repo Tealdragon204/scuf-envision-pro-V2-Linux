@@ -25,8 +25,8 @@ from scuf_envision.constants import BUTTON_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_P
 SCUF_BUTTON_NAMES = {
     ecodes.BTN_SOUTH: "A (BTN_SOUTH)",
     ecodes.BTN_EAST:  "B (BTN_EAST)",
-    ecodes.BTN_C:     "X (BTN_C) -> should be BTN_WEST",
-    ecodes.BTN_NORTH: "Y (BTN_NORTH)",
+    ecodes.BTN_C:     "X (BTN_C) -> should be BTN_NORTH (BTN_X)",
+    ecodes.BTN_NORTH: "Y (BTN_NORTH) -> should be BTN_WEST (BTN_Y)",
     ecodes.BTN_WEST:  "LB (BTN_WEST) -> should be BTN_TL",
     ecodes.BTN_Z:     "RB (BTN_Z) -> should be BTN_TR",
     ecodes.BTN_TL:    "Select/Back (BTN_TL)",
