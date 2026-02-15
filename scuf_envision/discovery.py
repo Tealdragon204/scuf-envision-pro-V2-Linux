@@ -17,6 +17,7 @@ the correct device by:
 import os
 import glob
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -240,6 +241,24 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
         secondary_event_paths=secondary,
         connection_type=conn_type,
     )
+
+
+def discover_scuf_with_retry(max_attempts: int = 15,
+                              interval: float = 2.0) -> Optional[DiscoveredDevice]:
+    """Try to discover a SCUF controller, retrying if not found.
+
+    Waits up to max_attempts * interval seconds (default 30s) for the
+    kernel to finish USB enumeration and expose evdev nodes.
+    """
+    for attempt in range(1, max_attempts + 1):
+        result = discover_scuf()
+        if result is not None:
+            return result
+        if attempt < max_attempts:
+            log.info(f"Controller not found, waiting for device enumeration... "
+                     f"(attempt {attempt}/{max_attempts}, next retry in {interval:.0f}s)")
+            time.sleep(interval)
+    return None
 
 
 def _find_hidraw_for_gamepad(event_path: str) -> Optional[str]:
