@@ -17,7 +17,7 @@ from evdev import ecodes
 # --- USB IDs ---
 SCUF_VENDOR_ID = 0x1B1C      # Corsair (parent company of SCUF)
 SCUF_PRODUCT_ID_WIRED = 0x3A05   # SCUF Envision Pro Controller V2 (wired)
-SCUF_PRODUCT_ID_RECEIVER = 0x3A09  # SCUF Envision Pro Wireless USB Receiver V2
+SCUF_PRODUCT_ID_RECEIVER = 0x3A08  # SCUF Envision Pro Wireless USB Receiver V2
 
 # --- Button mapping ---
 # The SCUF sends non-standard evdev button codes.

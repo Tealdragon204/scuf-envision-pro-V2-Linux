@@ -159,6 +159,8 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
 
     # Scan /sys/class/input/event* devices, sorted numerically
     sysfs_dirs = sorted(glob.glob("/sys/class/input/event*"), key=_event_number)
+    wired_count = 0
+    wireless_count = 0
     for sysfs_dir in sysfs_dirs:
         vid, pid = _get_vid_pid(sysfs_dir)
         if vid == SCUF_VENDOR_ID and pid in target_pids:
@@ -166,15 +168,22 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
             if event_path:
                 name = _read_sysfs(os.path.join(sysfs_dir, "device", "name"))
                 has_js = _has_joystick_handler(sysfs_dir)
+                if pid == SCUF_PRODUCT_ID_WIRED:
+                    wired_count += 1
+                else:
+                    wireless_count += 1
                 log.debug(f"Found SCUF event device: {event_path} "
                           f"name={name!r} has_joystick={has_js} pid=0x{pid:04x}")
                 matching_events.append((event_path, has_js, name, sysfs_dir, pid))
 
-    if not matching_events:
-        log.info("No SCUF Envision Pro V2 found")
-        return None
+    # Report per-connection-type search results
+    log.info(f"Searching for wired controller (1b1c:{SCUF_PRODUCT_ID_WIRED:04x})... "
+             f"{'found ' + str(wired_count) + ' device(s)' if wired_count else 'not found'}")
+    log.info(f"Searching for wireless receiver (1b1c:{SCUF_PRODUCT_ID_RECEIVER:04x})... "
+             f"{'found ' + str(wireless_count) + ' device(s)' if wireless_count else 'not found'}")
 
-    log.info(f"Found {len(matching_events)} SCUF event device(s)")
+    if not matching_events:
+        return None
 
     # --- Select the primary gamepad ---
 
