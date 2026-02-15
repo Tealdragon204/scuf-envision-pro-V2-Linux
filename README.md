@@ -237,6 +237,139 @@ Removes the service, udev rules, and installed files. Does not remove `python-ev
 
 ---
 
+## Complete Uninstallation & Reversal Guide
+
+If the driver doesn't work for you or you simply want to remove it, follow this guide to undo **every change** made during installation. After completing these steps your system will be exactly as it was before.
+
+### Step 1: Stop and Remove the Systemd Service
+
+If you set up the driver as a service:
+
+```bash
+# Stop the running service
+sudo systemctl stop scuf-envision.service
+
+# Disable it from starting on boot
+sudo systemctl disable scuf-envision.service
+
+# Remove the service file
+sudo rm -f /etc/systemd/system/scuf-envision.service
+
+# Reload systemd so it forgets the service
+sudo systemctl daemon-reload
+```
+
+If you were running the driver manually (not as a service), just press **Ctrl+C** in the terminal where it's running to stop it.
+
+### Step 2: Remove the Driver Files
+
+If you used `install.sh`, the driver was copied to `/opt/scuf-envision`:
+
+```bash
+sudo rm -rf /opt/scuf-envision
+```
+
+### Step 3: Remove udev Rules
+
+The installation created up to two udev rule files:
+
+```bash
+# Remove the device permission rules
+sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
+
+# Remove the USB audio workaround (if you ran disable_scuf_audio.sh)
+sudo rm -f /etc/udev/rules.d/98-scuf-no-audio.rules
+
+# Reload udev so the rules take effect immediately
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+### Step 4: Remove the uinput Auto-Load Config
+
+The installation configured the `uinput` kernel module to load automatically on boot. To undo this:
+
+```bash
+sudo rm -f /etc/modules-load.d/uinput.conf
+```
+
+> **Note:** Other software may also use `uinput` (e.g., other controller drivers, remote desktop tools). If you're unsure, you can leave this file in place - it's harmless.
+
+### Step 5: Remove the SDL Environment Variable (Steam Fix)
+
+If you set the SDL ignore variable for Steam:
+
+```bash
+rm -f ~/.config/environment.d/scuf.conf
+```
+
+Log out and back in for this change to take effect.
+
+### Step 6: Remove the python-evdev Package (Optional)
+
+This is optional because `python-evdev` is a common package that other software may depend on.
+
+**Arch / Garuda / Manjaro:**
+```bash
+sudo pacman -Rs python-evdev
+```
+
+**Ubuntu / Debian / Pop!_OS:**
+```bash
+sudo apt remove python3-evdev
+```
+
+**Fedora:**
+```bash
+sudo dnf remove python3-evdev
+```
+
+### Step 7: Delete the Cloned Repository (Optional)
+
+```bash
+rm -rf ~/scuf-envision-pro-V2-Linux
+```
+
+### Quick Uninstall (All-in-One)
+
+If you want to remove everything in one go, you can run these commands back-to-back:
+
+```bash
+# Stop and remove service
+sudo systemctl stop scuf-envision.service 2>/dev/null; true
+sudo systemctl disable scuf-envision.service 2>/dev/null; true
+sudo rm -f /etc/systemd/system/scuf-envision.service
+sudo systemctl daemon-reload
+
+# Remove installed driver files
+sudo rm -rf /opt/scuf-envision
+
+# Remove all udev rules
+sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
+sudo rm -f /etc/udev/rules.d/98-scuf-no-audio.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+# Remove uinput auto-load
+sudo rm -f /etc/modules-load.d/uinput.conf
+
+# Remove SDL ignore variable
+rm -f ~/.config/environment.d/scuf.conf
+
+echo "All SCUF driver components removed."
+```
+
+After this, **unplug and replug** the controller and **log out / log back in** to ensure all changes take effect. Your controller will go back to its default (unmapped) Linux behavior.
+
+### What the Uninstall Does NOT Change
+
+For safety, the uninstall process does **not** touch these:
+- **python-evdev package** - other software may use it; remove manually if you want (see Step 6)
+- **uinput kernel module** - it's a standard Linux module; removing the auto-load config just prevents it from loading on boot, it doesn't uninstall it
+- **Your Steam library or game configs** - no game settings are modified by this driver
+
+---
+
 ## Troubleshooting
 
 ### Controller not detected
