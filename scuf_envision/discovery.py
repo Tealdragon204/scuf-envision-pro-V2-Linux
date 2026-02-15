@@ -29,15 +29,18 @@ class DiscoveredDevice:
     """Represents a discovered SCUF controller with its device paths."""
 
     def __init__(self, event_path: str, hidraw_path: Optional[str] = None,
-                 secondary_event_paths: Optional[list] = None):
+                 secondary_event_paths: Optional[list] = None,
+                 connection_type: str = "wired"):
         self.event_path = event_path
         self.hidraw_path = hidraw_path
         self.secondary_event_paths = secondary_event_paths or []
+        self.connection_type = connection_type
 
     def __repr__(self):
         return (f"DiscoveredDevice(event={self.event_path}, "
                 f"hidraw={self.hidraw_path}, "
-                f"secondary={self.secondary_event_paths})")
+                f"secondary={self.secondary_event_paths}, "
+                f"type={self.connection_type})")
 
 
 def _read_sysfs(path: str) -> str:
@@ -151,7 +154,7 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
     Returns a DiscoveredDevice with the primary gamepad event node,
     or None if no controller is found.
     """
-    target_pids = {SCUF_PRODUCT_ID_WIRED}  # For now, wired only
+    target_pids = {SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER}
     matching_events = []
 
     # Scan /sys/class/input/event* devices, sorted numerically
@@ -164,8 +167,8 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
                 name = _read_sysfs(os.path.join(sysfs_dir, "device", "name"))
                 has_js = _has_joystick_handler(sysfs_dir)
                 log.debug(f"Found SCUF event device: {event_path} "
-                          f"name={name!r} has_joystick={has_js}")
-                matching_events.append((event_path, has_js, name, sysfs_dir))
+                          f"name={name!r} has_joystick={has_js} pid=0x{pid:04x}")
+                matching_events.append((event_path, has_js, name, sysfs_dir, pid))
 
     if not matching_events:
         log.info("No SCUF Envision Pro V2 found")
@@ -179,7 +182,7 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
     secondary = []
 
     # Strategy 1: Pick the device with a js* handler (most reliable)
-    for event_path, has_js, name, sysfs_dir in matching_events:
+    for event_path, has_js, name, sysfs_dir, pid in matching_events:
         if has_js:
             if primary is None:
                 primary = event_path
@@ -192,31 +195,41 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
     # Strategy 2: If no js handler found, check actual evdev capabilities
     if primary is None:
         log.debug("No js handler found, checking evdev capabilities...")
-        for event_path, _, name, _ in matching_events:
+        for event_path, _, name, _, _ in matching_events:
             if _has_gamepad_capabilities(event_path):
                 primary = event_path
-                secondary = [e for e, _, _, _ in matching_events if e != event_path]
+                secondary = [e for e, _, _, _, _ in matching_events if e != event_path]
                 log.info(f"Primary gamepad (capabilities match): {event_path}")
                 break
 
     # Strategy 3: Last resort - just use the first device
     if primary is None:
         primary = matching_events[0][0]
-        secondary = [e for e, _, _, _ in matching_events[1:]]
+        secondary = [e for e, _, _, _, _ in matching_events[1:]]
         log.warning(f"Primary gamepad (fallback, first device): {primary}")
 
     # Find hidraw device for the gamepad interface
     hidraw_path = _find_hidraw_for_gamepad(primary)
 
+    # Determine connection type from the matched PID
+    conn_type = "wired"
+    for ep, _, _, _, matched_pid in matching_events:
+        if ep == primary:
+            if matched_pid == SCUF_PRODUCT_ID_RECEIVER:
+                conn_type = "wireless"
+            break
+
     if secondary:
         log.info(f"Secondary inputs: {secondary}")
     if hidraw_path:
         log.info(f"HID raw device: {hidraw_path}")
+    log.info(f"Connection type: {conn_type}")
 
     return DiscoveredDevice(
         event_path=primary,
         hidraw_path=hidraw_path,
         secondary_event_paths=secondary,
+        connection_type=conn_type,
     )
 
 
@@ -263,7 +276,7 @@ def _find_hidraw_for_gamepad(event_path: str) -> Optional[str]:
                         pid = int(parts[2], 16)
                     except ValueError:
                         continue
-                    if vid == SCUF_VENDOR_ID and pid == SCUF_PRODUCT_ID_WIRED:
+                    if vid == SCUF_VENDOR_ID and pid in (SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER):
                         dev_path = f"/dev/{os.path.basename(hidraw_dir)}"
                         if not os.path.exists(dev_path):
                             continue

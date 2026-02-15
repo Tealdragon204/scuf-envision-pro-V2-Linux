@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import evdev
 from evdev import ecodes, categorize
 from scuf_envision.discovery import discover_scuf, _get_vid_pid, _has_joystick_handler, _event_number
-from scuf_envision.constants import BUTTON_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED
+from scuf_envision.constants import BUTTON_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER
 
 # Human-readable names for the SCUF's actual physical buttons
 SCUF_BUTTON_NAMES = {
@@ -58,12 +58,13 @@ def scan_all_scuf_devices():
     print("Scanning all SCUF event devices...")
     print()
 
+    target_pids = {SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER}
     sysfs_dirs = sorted(glob.glob("/sys/class/input/event*"), key=_event_number)
     found = []
 
     for sysfs_dir in sysfs_dirs:
         vid, pid = _get_vid_pid(sysfs_dir)
-        if vid == SCUF_VENDOR_ID and pid == SCUF_PRODUCT_ID_WIRED:
+        if vid == SCUF_VENDOR_ID and pid in target_pids:
             event_name = os.path.basename(sysfs_dir)
             event_path = f"/dev/input/{event_name}"
             has_js = _has_joystick_handler(sysfs_dir)
@@ -79,8 +80,9 @@ def scan_all_scuf_devices():
                 print(f"  {event_path}: cannot open ({e})")
                 continue
 
+            conn_label = "WIRELESS" if pid == SCUF_PRODUCT_ID_RECEIVER else "WIRED"
             js_label = " [JOYSTICK]" if has_js else ""
-            print(f"  {event_path}{js_label}")
+            print(f"  {event_path}{js_label} ({conn_label})")
             print(f"    Name: {dev_name}")
             print(f"    Phys: {dev_phys}")
 
@@ -128,9 +130,10 @@ def scan_all_scuf_devices():
                         pid = int(parts[2], 16)
                     except ValueError:
                         continue
-                    if vid == SCUF_VENDOR_ID and pid == SCUF_PRODUCT_ID_WIRED:
+                    if vid == SCUF_VENDOR_ID and pid in (SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER):
+                        pid_label = "wireless" if pid == SCUF_PRODUCT_ID_RECEIVER else "wired"
                         dev_path = f"/dev/{os.path.basename(hidraw_dir)}"
-                        print(f"  {dev_path}")
+                        print(f"  {dev_path} ({pid_label})")
     print()
 
     return found
@@ -160,6 +163,7 @@ def main():
 
     print(f"Primary device:    {discovered.event_path}")
     print(f"HID raw device:    {discovered.hidraw_path or 'not found'}")
+    print(f"Connection type:   {discovered.connection_type}")
     print(f"Secondary devices: {discovered.secondary_event_paths or 'none'}")
     print()
 

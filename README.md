@@ -378,7 +378,7 @@ For safety, the uninstall process does **not** touch these:
 ERROR: No SCUF Envision Pro V2 controller found!
 ```
 
-1. **Check USB connection:** `lsusb | grep 1b1c` - you should see `1b1c:3a05`
+1. **Check USB connection:** `lsusb | grep 1b1c` - you should see `1b1c:3a05` (wired) or `1b1c:3a09` (wireless receiver)
 2. **Try a different USB port** - preferably a port directly on the motherboard, not a hub
 3. **Try a different USB cable** - a bad cable can cause intermittent detection
 4. **Check dmesg:** `dmesg | tail -20` - look for USB errors
@@ -417,6 +417,23 @@ sudo python3 -m scuf_envision
 ```bash
 sudo modprobe uinput
 echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf
+```
+
+### Wireless: controller not detected
+
+1. **Check receiver:** `lsusb | grep 1b1c` - you should see `1b1c:3a09` for the wireless receiver
+2. **Power on the controller** - the receiver only exposes gamepad inputs when the controller is paired and powered on
+3. **Re-pair if needed** - hold the pairing button on the receiver, then hold the pairing button on the controller
+4. **Run diagnostics:** `sudo python3 tools/diag.py` - it will show both wired and wireless devices
+
+### Wireless: controller reconnection
+
+When using the wireless receiver, the driver automatically waits up to 5 minutes for the controller to reconnect if it disconnects (powered off, out of range, or sleeping). The virtual gamepad stays alive during this time so games don't see a device removal. To verify reconnection is working, check the driver logs:
+
+```bash
+sudo journalctl -u scuf-envision.service -f
+# Look for: "Controller disconnected. Waiting for reconnection..."
+# Then:     "Controller reconnected!"
 ```
 
 ---
@@ -462,7 +479,7 @@ echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf
 | Device | VID:PID | Connection | Status |
 |---|---|---|---|
 | SCUF Envision Pro Controller V2 | `1b1c:3a05` | Wired USB | Supported |
-| SCUF Envision Pro Wireless USB Receiver V2 | `1b1c:3a09` | Wireless Dongle | Planned |
+| SCUF Envision Pro Wireless USB Receiver V2 | `1b1c:3a09` | Wireless Dongle | Supported |
 
 ---
 
