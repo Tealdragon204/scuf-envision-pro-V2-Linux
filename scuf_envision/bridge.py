@@ -13,6 +13,7 @@ import logging
 import select
 import signal
 import sys
+import time
 
 import evdev
 from evdev import ecodes
@@ -27,13 +28,20 @@ from .virtual_gamepad import VirtualGamepad
 log = logging.getLogger(__name__)
 
 
+class _DeviceDisconnected(Exception):
+    """Raised when the physical device is lost."""
+    pass
+
+
 class BridgeService:
     """Bridges the physical SCUF controller to a virtual Xbox gamepad."""
 
-    def __init__(self, discovered: DiscoveredDevice, filter_config: dict = None):
+    def __init__(self, discovered: DiscoveredDevice, filter_config: dict = None,
+                 reconnect: bool = False):
         self.discovered = discovered
         self.filter = InputFilter(**(filter_config or {}))
         self.gamepad = VirtualGamepad()
+        self._reconnect = reconnect
 
         self._physical = None
         self._grabbed_devices = []
@@ -51,14 +59,30 @@ class BridgeService:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
+        self._running = True
         try:
-            self._open_devices()
             self.gamepad.create()
-            self._running = True
+            self._open_devices()
             log.info("Bridge started - SCUF -> Xbox translation active")
-            self._event_loop()
+            self._run_with_reconnect()
         finally:
             self._cleanup()
+
+    def _run_with_reconnect(self):
+        """Run the event loop, with optional reconnection on disconnect."""
+        while self._running:
+            try:
+                self._event_loop()
+                break  # Clean exit from event loop (shutdown requested)
+            except _DeviceDisconnected:
+                self._release_physical()
+                if not self._reconnect or not self._running:
+                    break
+                log.info("Controller disconnected. Waiting for reconnection...")
+                self._zero_virtual_outputs()
+                if not self._wait_for_reconnect():
+                    break
+                log.info("Controller reconnected!")
 
     def _open_devices(self):
         """Open the physical controller and grab it exclusively."""
@@ -97,8 +121,7 @@ class BridgeService:
             except OSError as e:
                 if self._running:
                     log.error(f"Device read error: {e}")
-                    log.info("Controller may have disconnected")
-                    self._running = False
+                    raise _DeviceDisconnected() from e
 
     def _handle_event(self, event):
         """Process a single evdev event from the physical controller."""
@@ -198,6 +221,46 @@ class BridgeService:
             self.gamepad.emit_axis(out_y_code, fy)
             self.gamepad.syn()
 
+    def _release_physical(self):
+        """Release physical devices only, keeping the virtual gamepad alive."""
+        for dev in self._grabbed_devices:
+            try:
+                dev.ungrab()
+                dev.close()
+            except OSError:
+                pass
+        self._grabbed_devices.clear()
+        self._physical = None
+
+    def _zero_virtual_outputs(self):
+        """Zero all stick/trigger axes to prevent stuck inputs on disconnect."""
+        for axis in (ecodes.ABS_X, ecodes.ABS_Y, ecodes.ABS_RX, ecodes.ABS_RY,
+                     ecodes.ABS_Z, ecodes.ABS_RZ):
+            self.gamepad.emit_axis(axis, 0)
+        self.gamepad.syn()
+        self._raw_left_x = self._raw_left_y = 0
+        self._raw_right_x = self._raw_right_y = 0
+
+    def _wait_for_reconnect(self, poll_interval: float = 2.0,
+                             max_wait: float = 300.0) -> bool:
+        """Poll for the controller to reappear. Returns True if reconnected."""
+        waited = 0.0
+        while self._running and waited < max_wait:
+            time.sleep(poll_interval)
+            waited += poll_interval
+            discovered = discover_scuf()
+            if discovered is not None:
+                self.discovered = discovered
+                try:
+                    self._open_devices()
+                    return True
+                except OSError as e:
+                    log.warning(f"Device found but failed to open: {e}")
+                    continue
+        if waited >= max_wait:
+            log.warning(f"Reconnection timeout ({max_wait:.0f}s), giving up.")
+        return False
+
     def _signal_handler(self, signum, frame):
         """Handle SIGINT/SIGTERM gracefully."""
         log.info(f"Received signal {signum}, shutting down...")
@@ -206,14 +269,7 @@ class BridgeService:
     def _cleanup(self):
         """Release all grabbed devices and destroy the virtual gamepad."""
         log.info("Cleaning up...")
-        for dev in self._grabbed_devices:
-            try:
-                dev.ungrab()
-                dev.close()
-                log.debug(f"Released: {dev.path}")
-            except OSError:
-                pass
-        self._grabbed_devices.clear()
+        self._release_physical()
         self.gamepad.close()
         log.info("Cleanup complete")
 
@@ -231,11 +287,16 @@ def run():
     discovered = discover_scuf()
     if discovered is None:
         log.error("No SCUF Envision Pro V2 controller found!")
-        log.error("Make sure the controller is plugged in via USB.")
+        log.error("Make sure the controller is plugged in via USB or wireless receiver is connected.")
         log.error("Check: lsusb | grep 1b1c")
         sys.exit(1)
 
     log.info(f"Found controller: {discovered}")
 
-    bridge = BridgeService(discovered)
+    # Enable reconnection for wireless connections
+    reconnect = (discovered.connection_type == "wireless")
+    if reconnect:
+        log.info("Wireless mode: reconnection on disconnect is enabled")
+
+    bridge = BridgeService(discovered, reconnect=reconnect)
     bridge.start()
