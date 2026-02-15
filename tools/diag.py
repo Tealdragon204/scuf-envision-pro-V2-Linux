@@ -153,8 +153,9 @@ def scan_all_scuf_devices():
 
 
 def main():
+    from scuf_envision import __version__
     print("=" * 60)
-    print("SCUF Envision Pro V2 - Diagnostic Tool")
+    print(f"SCUF Envision Pro V2 - Diagnostic Tool v{__version__}")
     print("=" * 60)
     print()
 
