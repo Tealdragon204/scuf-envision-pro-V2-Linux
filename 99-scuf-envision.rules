@@ -10,5 +10,9 @@ SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", MODE="06
 SUBSYSTEM=="input", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a08", MODE="0660", TAG+="uaccess"
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a08", MODE="0660", TAG+="uaccess"
 
+# Set SCUF headphone hardware mixer to max on connect (software volume handles attenuation)
+ACTION=="add", SUBSYSTEM=="sound", KERNEL=="controlC[0-9]*", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", RUN+="/usr/bin/amixer -c %n sset Headset 100%% unmute"
+ACTION=="add", SUBSYSTEM=="sound", KERNEL=="controlC[0-9]*", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a08", RUN+="/usr/bin/amixer -c %n sset Headset 100%% unmute"
+
 # uinput device (needed to create virtual gamepad)
 KERNEL=="uinput", MODE="0660", TAG+="uaccess"
