@@ -13,12 +13,13 @@ Press Ctrl+C to exit.
 
 import sys
 import os
+import glob
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import evdev
 from evdev import ecodes, categorize
-from scuf_envision.discovery import discover_scuf
-from scuf_envision.constants import BUTTON_MAP, AXIS_MAP
+from scuf_envision.discovery import discover_scuf, _get_vid_pid, _has_joystick_handler, _event_number
+from scuf_envision.constants import BUTTON_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED
 
 # Human-readable names for the SCUF's actual physical buttons
 SCUF_BUTTON_NAMES = {
@@ -48,13 +49,106 @@ SCUF_AXIS_NAMES = {
     ecodes.ABS_RZ:     "Right Stick Y (ABS_RZ -> should be ABS_RY)",
     ecodes.ABS_HAT0X:  "D-pad X (correct)",
     ecodes.ABS_HAT0Y:  "D-pad Y (correct)",
+    ecodes.ABS_MISC:   "ABS_MISC (not a gamepad axis)",
 }
+
+
+def scan_all_scuf_devices():
+    """Show every event device matching SCUF VID:PID with its capabilities."""
+    print("Scanning all SCUF event devices...")
+    print()
+
+    sysfs_dirs = sorted(glob.glob("/sys/class/input/event*"), key=_event_number)
+    found = []
+
+    for sysfs_dir in sysfs_dirs:
+        vid, pid = _get_vid_pid(sysfs_dir)
+        if vid == SCUF_VENDOR_ID and pid == SCUF_PRODUCT_ID_WIRED:
+            event_name = os.path.basename(sysfs_dir)
+            event_path = f"/dev/input/{event_name}"
+            has_js = _has_joystick_handler(sysfs_dir)
+            found.append((event_path, has_js))
+
+            try:
+                dev = evdev.InputDevice(event_path)
+                caps = dev.capabilities(verbose=False)
+                dev_name = dev.name
+                dev_phys = dev.phys
+                dev.close()
+            except (OSError, PermissionError) as e:
+                print(f"  {event_path}: cannot open ({e})")
+                continue
+
+            js_label = " [JOYSTICK]" if has_js else ""
+            print(f"  {event_path}{js_label}")
+            print(f"    Name: {dev_name}")
+            print(f"    Phys: {dev_phys}")
+
+            # Summarize capabilities
+            if ecodes.EV_KEY in caps:
+                btn_names = []
+                for code in caps[ecodes.EV_KEY]:
+                    name = ecodes.BTN.get(code) or ecodes.KEY.get(code) or f"0x{code:03x}"
+                    if isinstance(name, list):
+                        name = name[0]
+                    btn_names.append(name)
+                print(f"    Buttons ({len(btn_names)}): {', '.join(str(b) for b in btn_names[:15])}"
+                      + (" ..." if len(btn_names) > 15 else ""))
+            else:
+                print("    Buttons: none")
+
+            if ecodes.EV_ABS in caps:
+                axis_names = []
+                for entry in caps[ecodes.EV_ABS]:
+                    code = entry[0] if isinstance(entry, tuple) else entry
+                    name = ecodes.ABS.get(code, f"0x{code:02x}")
+                    if isinstance(name, list):
+                        name = name[0]
+                    axis_names.append(name)
+                print(f"    Axes ({len(axis_names)}): {', '.join(str(a) for a in axis_names)}")
+            else:
+                print("    Axes: none")
+
+            print()
+
+    # Also show hidraw devices
+    print("SCUF hidraw devices:")
+    for hidraw_dir in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        uevent_path = os.path.join(hidraw_dir, "device", "uevent")
+        try:
+            uevent = open(uevent_path).read()
+        except (OSError, IOError):
+            continue
+        for line in uevent.splitlines():
+            if line.startswith("HID_ID="):
+                parts = line.split("=", 1)[1].split(":")
+                if len(parts) >= 3:
+                    try:
+                        vid = int(parts[1], 16)
+                        pid = int(parts[2], 16)
+                    except ValueError:
+                        continue
+                    if vid == SCUF_VENDOR_ID and pid == SCUF_PRODUCT_ID_WIRED:
+                        dev_path = f"/dev/{os.path.basename(hidraw_dir)}"
+                        print(f"  {dev_path}")
+    print()
+
+    return found
 
 
 def main():
     print("=" * 60)
     print("SCUF Envision Pro V2 - Diagnostic Tool")
     print("=" * 60)
+    print()
+
+    # First: show ALL matching devices so the user can see what's detected
+    all_devices = scan_all_scuf_devices()
+
+    # Then: run discovery to show what the driver would select
+    print("-" * 60)
+    print("Running device discovery (what the driver will use)...")
+    print("-" * 60)
     print()
 
     discovered = discover_scuf()
@@ -89,6 +183,24 @@ def main():
             else:
                 print(f"    {code_info}")
     print()
+
+    # Check if the selected device looks like a real gamepad
+    raw_caps = dev.capabilities(verbose=False)
+    has_abs_x = False
+    if ecodes.EV_ABS in raw_caps:
+        for entry in raw_caps[ecodes.EV_ABS]:
+            code = entry[0] if isinstance(entry, tuple) else entry
+            if code == ecodes.ABS_X:
+                has_abs_x = True
+    has_buttons = ecodes.EV_KEY in raw_caps
+
+    if not (has_abs_x and has_buttons):
+        print("WARNING: Selected device does NOT look like a gamepad!")
+        print("         It's missing ABS_X/ABS_Y axes or gamepad buttons.")
+        print("         The driver may not work with this device.")
+        print("         Check the device list above - the correct device")
+        print("         should be the one marked [JOYSTICK].")
+        print()
 
     print("=" * 60)
     print("Press buttons and move sticks to see raw events.")

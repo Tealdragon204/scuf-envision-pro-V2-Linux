@@ -2,12 +2,16 @@
 Device discovery - find the SCUF Envision Pro V2 evdev nodes.
 
 The controller exposes multiple USB interfaces:
-  - Interface 1.3: Primary gamepad (HID Gamepad) -> this is what we want
-  - Interface 1.4: Secondary input (Consumer Control, mouse/kbd emulation)
-  - Interface 2.x: USB Audio (headphone jack) -> causes USB errors, not our problem
+  - Interface 3 (if03): Primary gamepad (HID Gamepad) -> this is what we want
+  - Interface 4 (if04): Secondary input (Consumer Control, menu buttons)
+  - Interface 2.x: USB Audio (headphone jack) -> causes USB errors
 
-We scan /sys/class/input for evdev devices matching our VID:PID and identify
-which one is the primary gamepad by checking for joystick (js*) handler siblings.
+Event and hidraw device numbers are assigned dynamically by the kernel
+(e.g. /dev/input/event7 today might be event22 tomorrow). We identify
+the correct device by:
+  1. Matching VID:PID via sysfs
+  2. Checking for a js* (joystick) handler sibling
+  3. Verifying actual gamepad capabilities (ABS_X, ABS_Y, EV_KEY)
 """
 
 import os
@@ -54,23 +58,75 @@ def _get_vid_pid(sysfs_path: str) -> tuple:
         return 0, 0
 
 
-def _has_joystick_handler(sysfs_path: str) -> bool:
-    """Check if this input device has a js* (joystick) handler sibling."""
-    handlers_path = os.path.join(sysfs_path, "device")
+def _event_number(sysfs_path: str) -> int:
+    """Extract the numeric part of an event device path for sorting."""
+    basename = os.path.basename(sysfs_path)
     try:
-        for entry in os.listdir(handlers_path):
+        return int(basename.replace("event", ""))
+    except ValueError:
+        return 999999
+
+
+def _has_joystick_handler(sysfs_path: str) -> bool:
+    """
+    Check if this input device has a js* (joystick) handler sibling.
+
+    In sysfs, /sys/class/input/eventN/device/ is the parent input device
+    directory. If the same parent also has a jsN entry, this is a joystick.
+    This is the most reliable indicator for the gamepad evdev node.
+    """
+    device_dir = os.path.join(sysfs_path, "device")
+    try:
+        for entry in os.listdir(device_dir):
             if entry.startswith("js"):
-                return True
-        # Also check in the handlers file
-        handlers_file = os.path.join(sysfs_path, "device", "capabilities", "abs")
-        if os.path.exists(handlers_file):
-            abs_caps = _read_sysfs(handlers_file)
-            # A gamepad with sticks will have non-zero ABS capabilities
-            if abs_caps and abs_caps != "0":
                 return True
     except OSError:
         pass
     return False
+
+
+def _has_gamepad_capabilities(event_path: str) -> bool:
+    """
+    Check if an evdev device has actual gamepad capabilities.
+
+    A real gamepad must have:
+      - EV_ABS with at least ABS_X and ABS_Y (analog sticks)
+      - EV_KEY with at least some gamepad buttons
+    """
+    import evdev
+    try:
+        dev = evdev.InputDevice(event_path)
+        caps = dev.capabilities()
+        dev.close()
+
+        # Must have both axes and buttons
+        if evdev.ecodes.EV_ABS not in caps or evdev.ecodes.EV_KEY not in caps:
+            return False
+
+        # Check for analog stick axes (ABS_X and ABS_Y at minimum)
+        abs_codes = set()
+        for entry in caps[evdev.ecodes.EV_ABS]:
+            code = entry[0] if isinstance(entry, tuple) else entry
+            abs_codes.add(code)
+
+        if evdev.ecodes.ABS_X not in abs_codes or evdev.ecodes.ABS_Y not in abs_codes:
+            return False
+
+        # Check for gamepad buttons (at least one from BTN_SOUTH..BTN_THUMBR range)
+        btn_codes = set(caps[evdev.ecodes.EV_KEY])
+        gamepad_buttons = {
+            evdev.ecodes.BTN_SOUTH, evdev.ecodes.BTN_EAST,
+            evdev.ecodes.BTN_NORTH, evdev.ecodes.BTN_WEST,
+            evdev.ecodes.BTN_C, evdev.ecodes.BTN_Z,
+            evdev.ecodes.BTN_TL, evdev.ecodes.BTN_TR,
+            evdev.ecodes.BTN_TL2, evdev.ecodes.BTN_TR2,
+        }
+        if not btn_codes & gamepad_buttons:
+            return False
+
+        return True
+    except (OSError, PermissionError):
+        return False
 
 
 def _find_event_node(sysfs_path: str) -> Optional[str]:
@@ -86,71 +142,76 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
     """
     Scan for SCUF Envision Pro V2 controllers.
 
+    Identification strategy (in priority order):
+      1. Find all event devices matching our VID:PID
+      2. Prefer the one with a js* (joystick) handler sibling
+      3. If no js handler, pick the one with real gamepad capabilities
+      4. Everything else is marked as secondary
+
     Returns a DiscoveredDevice with the primary gamepad event node,
     or None if no controller is found.
     """
     target_pids = {SCUF_PRODUCT_ID_WIRED}  # For now, wired only
     matching_events = []
 
-    # Scan /sys/class/input/event* devices
-    for sysfs_dir in sorted(glob.glob("/sys/class/input/event*")):
+    # Scan /sys/class/input/event* devices, sorted numerically
+    sysfs_dirs = sorted(glob.glob("/sys/class/input/event*"), key=_event_number)
+    for sysfs_dir in sysfs_dirs:
         vid, pid = _get_vid_pid(sysfs_dir)
         if vid == SCUF_VENDOR_ID and pid in target_pids:
             event_path = _find_event_node(sysfs_dir)
             if event_path:
-                # Read device name for logging
                 name = _read_sysfs(os.path.join(sysfs_dir, "device", "name"))
                 has_js = _has_joystick_handler(sysfs_dir)
-                log.debug(f"Found SCUF device: {event_path} name={name!r} joystick={has_js}")
+                log.debug(f"Found SCUF event device: {event_path} "
+                          f"name={name!r} has_joystick={has_js}")
                 matching_events.append((event_path, has_js, name, sysfs_dir))
 
     if not matching_events:
         log.info("No SCUF Envision Pro V2 found")
         return None
 
-    # Identify the primary gamepad: prefer the one with js* handler
+    log.info(f"Found {len(matching_events)} SCUF event device(s)")
+
+    # --- Select the primary gamepad ---
+
     primary = None
     secondary = []
 
+    # Strategy 1: Pick the device with a js* handler (most reliable)
     for event_path, has_js, name, sysfs_dir in matching_events:
-        if has_js and primary is None:
-            primary = event_path
+        if has_js:
+            if primary is None:
+                primary = event_path
+                log.info(f"Primary gamepad (js handler): {event_path}")
+            else:
+                secondary.append(event_path)
         else:
             secondary.append(event_path)
 
-    # Fallback: if no js handler found, use the first Gamepad-type device
+    # Strategy 2: If no js handler found, check actual evdev capabilities
     if primary is None:
-        # Try to identify by checking evdev capabilities
-        import evdev
+        log.debug("No js handler found, checking evdev capabilities...")
         for event_path, _, name, _ in matching_events:
-            try:
-                dev = evdev.InputDevice(event_path)
-                caps = dev.capabilities()
-                # A gamepad will have ABS_X and buttons
-                if evdev.ecodes.EV_ABS in caps and evdev.ecodes.EV_KEY in caps:
-                    abs_codes = [a[0] if isinstance(a, tuple) else a for a in caps[evdev.ecodes.EV_ABS]]
-                    if evdev.ecodes.ABS_X in abs_codes:
-                        primary = event_path
-                        secondary = [e for e, _, _, _ in matching_events if e != event_path]
-                        dev.close()
-                        break
-                dev.close()
-            except (OSError, PermissionError):
-                continue
+            if _has_gamepad_capabilities(event_path):
+                primary = event_path
+                secondary = [e for e, _, _, _ in matching_events if e != event_path]
+                log.info(f"Primary gamepad (capabilities match): {event_path}")
+                break
 
+    # Strategy 3: Last resort - just use the first device
     if primary is None:
-        # Last resort: just use the first one
         primary = matching_events[0][0]
         secondary = [e for e, _, _, _ in matching_events[1:]]
+        log.warning(f"Primary gamepad (fallback, first device): {primary}")
 
-    # Find hidraw device
-    hidraw_path = _find_hidraw()
+    # Find hidraw device for the gamepad interface
+    hidraw_path = _find_hidraw_for_gamepad(primary)
 
-    log.info(f"SCUF primary gamepad: {primary}")
     if secondary:
-        log.info(f"SCUF secondary inputs: {secondary}")
+        log.info(f"Secondary inputs: {secondary}")
     if hidraw_path:
-        log.info(f"SCUF hidraw: {hidraw_path}")
+        log.info(f"HID raw device: {hidraw_path}")
 
     return DiscoveredDevice(
         event_path=primary,
@@ -159,8 +220,36 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
     )
 
 
-def _find_hidraw() -> Optional[str]:
-    """Find the hidraw device for the SCUF controller."""
+def _find_hidraw_for_gamepad(event_path: str) -> Optional[str]:
+    """
+    Find the hidraw device that shares the same USB interface as the
+    primary gamepad event device.
+
+    Falls back to the first VID:PID-matching hidraw if interface matching
+    fails (still correct when only one hidraw matches).
+    """
+    # Try to find which USB interface the event device belongs to
+    # by resolving the sysfs symlink chain
+    event_name = os.path.basename(event_path)
+    sysfs_link = f"/sys/class/input/{event_name}"
+    try:
+        real_path = os.path.realpath(sysfs_link)
+    except OSError:
+        real_path = ""
+
+    # Walk up to find the USB interface directory (contains "bInterfaceNumber")
+    gamepad_interface_dir = None
+    check_path = real_path
+    for _ in range(10):  # max depth
+        check_path = os.path.dirname(check_path)
+        if not check_path or check_path == "/":
+            break
+        if os.path.exists(os.path.join(check_path, "bInterfaceNumber")):
+            gamepad_interface_dir = check_path
+            break
+
+    # Now find hidraw devices - prefer the one on the same USB interface
+    first_match = None
     for hidraw_dir in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
         uevent_path = os.path.join(hidraw_dir, "device", "uevent")
         uevent = _read_sysfs(uevent_path)
@@ -172,10 +261,22 @@ def _find_hidraw() -> Optional[str]:
                     try:
                         vid = int(parts[1], 16)
                         pid = int(parts[2], 16)
-                        if vid == SCUF_VENDOR_ID and pid == SCUF_PRODUCT_ID_WIRED:
-                            dev_path = f"/dev/{os.path.basename(hidraw_dir)}"
-                            if os.path.exists(dev_path):
-                                return dev_path
                     except ValueError:
                         continue
-    return None
+                    if vid == SCUF_VENDOR_ID and pid == SCUF_PRODUCT_ID_WIRED:
+                        dev_path = f"/dev/{os.path.basename(hidraw_dir)}"
+                        if not os.path.exists(dev_path):
+                            continue
+
+                        if first_match is None:
+                            first_match = dev_path
+
+                        # Check if this hidraw is on the same USB interface
+                        if gamepad_interface_dir:
+                            hidraw_real = os.path.realpath(hidraw_dir)
+                            if gamepad_interface_dir in hidraw_real:
+                                log.debug(f"hidraw interface match: {dev_path}")
+                                return dev_path
+
+    # Fallback: return the first VID:PID match
+    return first_match
