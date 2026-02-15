@@ -92,22 +92,27 @@ sudo udevadm trigger
 
 ### Step 5: Enable Headphone Audio (Recommended)
 
-The SCUF controller has a built-in headphone jack, but its USB audio "Headset" mixer reports an invalid dB range. PipeWire/WirePlumber disables dB-based volume mapping, making the volume slider cosmetic-only (only mute actually works).
+The SCUF controller has a built-in headphone jack, but its USB audio has two issues:
+1. The "Headset" mixer reports an invalid dB range, making the volume slider cosmetic-only
+2. The hardware mixer maxes out at -16 dB, making audio much quieter than expected
 
-This one-time fix installs a WirePlumber config that forces software volume mixing:
+This one-time fix installs a WirePlumber config (software volume) and a PipeWire filter-chain (+12 dB gain boost):
 
 ```bash
 sudo bash tools/setup_scuf_audio.sh
 ```
 
-Then **reboot** (or run `systemctl --user restart wireplumber` as your normal user). After that, the headphone volume slider will work normally. The udev rules also auto-set the hardware mixer to max on each connect.
+Then **reboot** (or run `systemctl --user restart pipewire wireplumber` as your normal user). After that, the headphone volume slider will work normally at comparable loudness to other devices. The udev rules also auto-set the hardware mixer to max on each connect.
+
+To adjust gain if audio is too loud/quiet, edit `/etc/pipewire/pipewire.conf.d/50-scuf-gain.conf` and change the `gain = 12.0` value (+6 = 2x, +12 = 4x, +16 = 6x louder).
 
 To undo:
 
 ```bash
 sudo rm /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
+sudo rm /etc/pipewire/pipewire.conf.d/50-scuf-gain.conf
 sudo udevadm control --reload-rules
-# Then reboot or restart WirePlumber
+# Then reboot or restart PipeWire/WirePlumber
 ```
 
 ---
@@ -278,6 +283,7 @@ sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
 
 # Remove the audio config (if you ran setup_scuf_audio.sh)
 sudo rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
+sudo rm -f /etc/pipewire/pipewire.conf.d/50-scuf-gain.conf
 
 # Reload udev so the rules take effect immediately
 sudo udevadm control --reload-rules
@@ -346,6 +352,7 @@ sudo rm -rf /opt/scuf-envision
 # Remove all udev rules
 sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
 sudo rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
+sudo rm -f /etc/pipewire/pipewire.conf.d/50-scuf-gain.conf
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
@@ -498,6 +505,7 @@ scuf-envision-pro-V2-Linux/
     diag.py                   # Raw event diagnostic tool
     setup_scuf_audio.sh       # Headphone audio setup (WirePlumber software volume)
   50-scuf-audio.conf           # WirePlumber config for headphone audio
+  50-scuf-gain.conf            # PipeWire filter-chain for gain boost
   99-scuf-envision.rules      # udev rules for device permissions
   scuf-envision.service       # systemd service file
   install.sh                  # Automated installer
