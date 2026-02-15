@@ -282,7 +282,8 @@ def run():
         datefmt="%H:%M:%S",
     )
 
-    log.info("SCUF Envision Pro V2 Linux Driver starting...")
+    from . import __version__
+    log.info(f"SCUF Envision Pro V2 Linux Driver v{__version__} starting...")
 
     discovered = discover_scuf_with_retry()
     if discovered is None:
