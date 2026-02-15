@@ -1,0 +1,14 @@
+# udev rules for SCUF Envision Pro V2
+# Install: sudo cp 99-scuf-envision.rules /etc/udev/rules.d/
+# Reload:  sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# SCUF Envision Pro Controller V2 (wired) - grant access to input/plugdev group
+SUBSYSTEM=="input", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", MODE="0660", TAG+="uaccess"
+
+# SCUF Envision Pro Wireless USB Receiver V2
+SUBSYSTEM=="input", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a09", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a09", MODE="0660", TAG+="uaccess"
+
+# uinput device (needed to create virtual gamepad)
+KERNEL=="uinput", MODE="0660", TAG+="uaccess"
