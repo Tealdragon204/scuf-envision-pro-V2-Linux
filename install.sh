@@ -19,7 +19,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Step 1: Install python-evdev
-echo "[1/5] Installing dependencies..."
+echo "[1/6] Installing dependencies..."
 if command -v pacman &>/dev/null; then
     pacman -S --noconfirm --needed python-evdev
 elif command -v apt &>/dev/null; then
@@ -32,7 +32,7 @@ else
 fi
 
 # Step 2: Load uinput module
-echo "[2/5] Loading uinput kernel module..."
+echo "[2/6] Loading uinput kernel module..."
 modprobe uinput
 if ! grep -q "^uinput$" /etc/modules-load.d/*.conf 2>/dev/null; then
     echo "uinput" > /etc/modules-load.d/uinput.conf
@@ -40,24 +40,37 @@ if ! grep -q "^uinput$" /etc/modules-load.d/*.conf 2>/dev/null; then
 fi
 
 # Step 3: Install udev rules
-echo "[3/5] Installing udev rules..."
+echo "[3/6] Installing udev rules..."
 cp "$SCRIPT_DIR/99-scuf-envision.rules" /etc/udev/rules.d/
 udevadm control --reload-rules
 udevadm trigger
 echo "  Installed to /etc/udev/rules.d/99-scuf-envision.rules"
 
 # Step 4: Install driver
-echo "[4/5] Installing driver..."
+echo "[4/6] Installing driver..."
 mkdir -p "$INSTALL_DIR"
 cp -r "$SCRIPT_DIR/scuf_envision" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/tools" "$INSTALL_DIR/"
 echo "  Installed to $INSTALL_DIR"
 
 # Step 5: Install systemd service
-echo "[5/5] Installing systemd service..."
+echo "[5/6] Installing systemd service..."
 cp "$SCRIPT_DIR/scuf-envision.service" /etc/systemd/system/
 systemctl daemon-reload
 echo "  Service installed (not started yet)"
+
+# Step 6: Install audio config
+echo "[6/6] Installing audio config (headphone volume fix)..."
+WP_CONF_DIR="/etc/wireplumber/wireplumber.conf.d"
+OLD_DISABLE_RULE="/etc/udev/rules.d/98-scuf-no-audio.rules"
+mkdir -p "$WP_CONF_DIR"
+cp "$SCRIPT_DIR/50-scuf-audio.conf" "$WP_CONF_DIR/"
+echo "  Installed WirePlumber config to $WP_CONF_DIR/50-scuf-audio.conf"
+if [ -f "$OLD_DISABLE_RULE" ]; then
+    rm -f "$OLD_DISABLE_RULE"
+    echo "  Removed old audio-disable workaround: $OLD_DISABLE_RULE"
+fi
+echo "  Note: Restart WirePlumber or reboot for audio changes to take effect"
 
 echo ""
 echo "======================================"

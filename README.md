@@ -8,7 +8,7 @@ A userspace driver that makes the SCUF Envision Pro V2 controller work correctly
 
 The SCUF Envision Pro V2 (Corsair VID `1b1c`, PID `3a05`) sends **wildly non-standard evdev button and axis codes** on Linux. Without this driver, buttons are mismatched (X/Y swapped, bumpers in wrong slots, triggers on wrong axes) and games are unplayable.
 
-Additionally, the controller's USB audio interfaces (headphone jack) can cause USB protocol errors that destabilize the connection.
+Additionally, the controller's USB audio "Headset" mixer reports a broken dB range, causing volume control to not work under PipeWire/WirePlumber without the included audio fix.
 
 ## How It Works
 
@@ -90,26 +90,24 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-### Step 5: Fix USB Audio Stability (Recommended)
+### Step 5: Enable Headphone Audio (Recommended)
 
-The SCUF controller has a built-in headphone jack that exposes USB audio endpoints. Linux's audio driver often fails to configure these, which can cause the **entire controller to disconnect**. If you see errors like these in `dmesg`:
+The SCUF controller has a built-in headphone jack, but its USB audio "Headset" mixer reports an invalid dB range. PipeWire/WirePlumber disables dB-based volume mapping, making the volume slider cosmetic-only (only mute actually works).
 
-```
-usb 3-6: 2:1: usb_set_interface failed (-71)
-usb 3-6: 2:1: cannot set freq 96000 to ep 0x3
-```
-
-Run this one-time fix:
+This one-time fix installs a WirePlumber config that forces software volume mixing:
 
 ```bash
-sudo bash tools/disable_scuf_audio.sh
+sudo bash tools/setup_scuf_audio.sh
 ```
 
-Then **unplug and replug** the controller. This disables the audio driver from claiming the SCUF's audio interfaces. The headphone jack on the controller won't work, but the gamepad will be stable. To undo this later:
+Then **reboot** (or run `systemctl --user restart wireplumber` as your normal user). After that, the headphone volume slider will work normally. The udev rules also auto-set the hardware mixer to max on each connect.
+
+To undo:
 
 ```bash
-sudo rm /etc/udev/rules.d/98-scuf-no-audio.rules
+sudo rm /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
 sudo udevadm control --reload-rules
+# Then reboot or restart WirePlumber
 ```
 
 ---
@@ -226,6 +224,7 @@ This does everything in one step:
 - Installs udev rules
 - Copies the driver to `/opt/scuf-envision`
 - Installs the systemd service
+- Installs audio config (WirePlumber software volume fix)
 
 ### Full Uninstall
 
@@ -277,8 +276,8 @@ The installation created up to two udev rule files:
 # Remove the device permission rules
 sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
 
-# Remove the USB audio workaround (if you ran disable_scuf_audio.sh)
-sudo rm -f /etc/udev/rules.d/98-scuf-no-audio.rules
+# Remove the audio config (if you ran setup_scuf_audio.sh)
+sudo rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
 
 # Reload udev so the rules take effect immediately
 sudo udevadm control --reload-rules
@@ -346,7 +345,7 @@ sudo rm -rf /opt/scuf-envision
 
 # Remove all udev rules
 sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
-sudo rm -f /etc/udev/rules.d/98-scuf-no-audio.rules
+sudo rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
@@ -385,11 +384,11 @@ ERROR: No SCUF Envision Pro V2 controller found!
 
 ### Controller disconnects after a few seconds
 
-This is usually caused by the USB audio interface crashing. Apply the fix:
+This can be caused by the USB audio interface. Make sure the audio setup is applied:
 
 ```bash
-sudo bash tools/disable_scuf_audio.sh
-# Unplug and replug the controller
+sudo bash tools/setup_scuf_audio.sh
+# Reboot or restart WirePlumber, then replug the controller
 ```
 
 ### Double input / buttons firing twice
@@ -497,7 +496,8 @@ scuf-envision-pro-V2-Linux/
     virtual_gamepad.py        # Virtual Xbox controller via uinput
   tools/
     diag.py                   # Raw event diagnostic tool
-    disable_scuf_audio.sh     # USB audio stability workaround
+    setup_scuf_audio.sh       # Headphone audio setup (WirePlumber software volume)
+  50-scuf-audio.conf           # WirePlumber config for headphone audio
   99-scuf-envision.rules      # udev rules for device permissions
   scuf-envision.service       # systemd service file
   install.sh                  # Automated installer
