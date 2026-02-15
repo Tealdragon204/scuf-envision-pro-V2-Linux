@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import evdev
 from evdev import ecodes, categorize
-from scuf_envision.discovery import discover_scuf, _get_vid_pid, _has_joystick_handler, _event_number
+from scuf_envision.discovery import discover_scuf, discover_scuf_with_retry, _get_vid_pid, _has_joystick_handler, _event_number
 from scuf_envision.constants import BUTTON_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER
 
 # Human-readable names for the SCUF's actual physical buttons
@@ -167,10 +167,10 @@ def main():
     print("-" * 60)
     print()
 
-    discovered = discover_scuf()
+    discovered = discover_scuf_with_retry()
     if discovered is None:
-        print("ERROR: No SCUF controller found!")
-        print("  - Is the controller plugged in via USB?")
+        print("ERROR: No SCUF controller found after 30s!")
+        print("  - Is the controller plugged in via USB or wireless receiver connected?")
         print("  - Check: lsusb | grep 1b1c")
         sys.exit(1)
 

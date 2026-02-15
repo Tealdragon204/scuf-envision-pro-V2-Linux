@@ -21,7 +21,7 @@ from evdev import ecodes
 from .constants import (
     BUTTON_MAP, PADDLE_MAP, AXIS_MAP, POLL_TIMEOUT_MS,
 )
-from .discovery import DiscoveredDevice, discover_scuf
+from .discovery import DiscoveredDevice, discover_scuf, discover_scuf_with_retry
 from .input_filter import InputFilter
 from .virtual_gamepad import VirtualGamepad
 
@@ -284,9 +284,9 @@ def run():
 
     log.info("SCUF Envision Pro V2 Linux Driver starting...")
 
-    discovered = discover_scuf()
+    discovered = discover_scuf_with_retry()
     if discovered is None:
-        log.error("No SCUF Envision Pro V2 controller found!")
+        log.error("No SCUF Envision Pro V2 controller found after 30s!")
         log.error("Make sure the controller is plugged in via USB or wireless receiver is connected.")
         log.error("Check: lsusb | grep 1b1c")
         sys.exit(1)
