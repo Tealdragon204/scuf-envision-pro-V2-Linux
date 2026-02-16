@@ -225,6 +225,8 @@ This does everything in one step:
 - Copies the driver to `/opt/scuf-envision`
 - Installs the systemd service
 - Installs audio config (WirePlumber software volume fix)
+- Starts the systemd service
+- Sets service to boot at system startup
 
 ### Full Uninstall
 
