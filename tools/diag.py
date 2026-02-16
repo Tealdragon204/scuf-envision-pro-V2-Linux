@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import evdev
 from evdev import ecodes, categorize
 from scuf_envision.discovery import discover_scuf, discover_scuf_with_retry, _get_vid_pid, _has_joystick_handler, _event_number
-from scuf_envision.constants import BUTTON_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER
+from scuf_envision.constants import BUTTON_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER, VIRTUAL_DEVICE_NAME
 
 # Human-readable names for the SCUF's actual physical buttons
 SCUF_BUTTON_NAMES = {
@@ -51,6 +51,49 @@ SCUF_AXIS_NAMES = {
     ecodes.ABS_HAT0Y:  "D-pad Y (correct)",
     ecodes.ABS_MISC:   "ABS_MISC (not a gamepad axis)",
 }
+
+# Names for the remapped virtual Xbox gamepad output
+VIRTUAL_BUTTON_NAMES = {
+    ecodes.BTN_SOUTH:  "A",
+    ecodes.BTN_EAST:   "B",
+    ecodes.BTN_NORTH:  "X",
+    ecodes.BTN_WEST:   "Y",
+    ecodes.BTN_TL:     "LB",
+    ecodes.BTN_TR:     "RB",
+    ecodes.BTN_SELECT: "Select/Back",
+    ecodes.BTN_START:  "Start/Menu",
+    ecodes.BTN_THUMBL: "L3/LS Click",
+    ecodes.BTN_THUMBR: "R3/RS Click",
+    ecodes.BTN_MODE:   "Guide/Xbox",
+    ecodes.BTN_TRIGGER_HAPPY1: "Paddle 1",
+    ecodes.BTN_TRIGGER_HAPPY2: "Paddle 2",
+    ecodes.BTN_TRIGGER_HAPPY3: "Paddle 3",
+    ecodes.BTN_TRIGGER_HAPPY4: "Paddle 4",
+}
+
+VIRTUAL_AXIS_NAMES = {
+    ecodes.ABS_X:     "Left Stick X",
+    ecodes.ABS_Y:     "Left Stick Y",
+    ecodes.ABS_RX:    "Right Stick X",
+    ecodes.ABS_RY:    "Right Stick Y",
+    ecodes.ABS_Z:     "Left Trigger",
+    ecodes.ABS_RZ:    "Right Trigger",
+    ecodes.ABS_HAT0X: "D-pad X",
+    ecodes.ABS_HAT0Y: "D-pad Y",
+}
+
+
+def find_virtual_device():
+    """Find the bridge's virtual Xbox gamepad if it exists."""
+    for path in evdev.list_devices():
+        try:
+            dev = evdev.InputDevice(path)
+            if dev.name == VIRTUAL_DEVICE_NAME:
+                return dev
+            dev.close()
+        except (OSError, PermissionError):
+            continue
+    return None
 
 
 def scan_all_scuf_devices():
@@ -220,8 +263,31 @@ def main():
         print("         should be the one marked [JOYSTICK].")
         print()
 
+    # Check if the bridge is running (virtual device exists)
+    virtual_dev = find_virtual_device()
+    if virtual_dev:
+        print("!" * 60)
+        print("NOTE: The SCUF bridge driver is currently running.")
+        print(f"  Virtual device: {virtual_dev.path} ({virtual_dev.name})")
+        print()
+        print("The bridge has exclusive access to the physical controller,")
+        print("so raw events will not appear here. Switching to virtual")
+        print("device mode to show the bridge's remapped output instead.")
+        print("!" * 60)
+        print()
+        dev.close()
+        dev = virtual_dev
+        button_names = VIRTUAL_BUTTON_NAMES
+        axis_names = VIRTUAL_AXIS_NAMES
+        mode_label = "VIRTUAL (bridge output)"
+    else:
+        button_names = SCUF_BUTTON_NAMES
+        axis_names = SCUF_AXIS_NAMES
+        mode_label = "RAW (physical device)"
+
     print("=" * 60)
-    print("Press buttons and move sticks to see raw events.")
+    print(f"Mode: {mode_label}")
+    print("Press buttons and move sticks to see events.")
     print("Press Ctrl+C to exit.")
     print("=" * 60)
     print()
@@ -232,12 +298,12 @@ def main():
                 continue
 
             if event.type == ecodes.EV_KEY:
-                name = SCUF_BUTTON_NAMES.get(event.code, f"UNKNOWN (0x{event.code:03x})")
+                name = button_names.get(event.code, f"UNKNOWN (0x{event.code:03x})")
                 state = "PRESSED" if event.value == 1 else "RELEASED" if event.value == 0 else f"value={event.value}"
                 print(f"BUTTON: {name:45s} {state}")
 
             elif event.type == ecodes.EV_ABS:
-                name = SCUF_AXIS_NAMES.get(event.code, f"UNKNOWN (0x{event.code:02x})")
+                name = axis_names.get(event.code, f"UNKNOWN (0x{event.code:02x})")
                 print(f"AXIS:   {name:45s} value={event.value}")
 
             else:
