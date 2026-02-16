@@ -253,6 +253,12 @@ class BridgeService:
                 self.discovered = discovered
                 try:
                     self._open_devices()
+                    # Re-apply audio config on reconnection
+                    from .audio_control import apply_audio_config
+                    try:
+                        apply_audio_config()
+                    except Exception:
+                        pass
                     return True
                 except OSError as e:
                     log.warning(f"Device found but failed to open: {e}")
@@ -293,6 +299,13 @@ def run():
         sys.exit(1)
 
     log.info(f"Found controller: {discovered}")
+
+    # Apply audio config (disable/enable USB audio per /etc/scuf-envision/config.ini)
+    from .audio_control import apply_audio_config
+    try:
+        apply_audio_config()
+    except Exception as e:
+        log.warning(f"Could not apply audio config: {e}")
 
     # Enable reconnection for wireless connections
     reconnect = (discovered.connection_type == "wireless")
