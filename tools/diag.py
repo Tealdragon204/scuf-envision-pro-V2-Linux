@@ -19,7 +19,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import evdev
 from evdev import ecodes, categorize
 from scuf_envision.discovery import discover_scuf, discover_scuf_with_retry, _get_vid_pid, _has_joystick_handler, _event_number
-from scuf_envision.constants import BUTTON_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER, VIRTUAL_DEVICE_NAME
+from scuf_envision.constants import BUTTON_MAP, PADDLE_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER, VIRTUAL_DEVICE_NAME
+
+# ANSI color codes
+RED = "\033[91m"
+RESET = "\033[0m"
+
+# In RAW mode, these are the button/axis codes that the SCUF sends on the WRONG
+# evdev code (i.e., the bridge must remap them).  Derived from the mapping tables:
+# if source != destination, the raw code is wrong.
+_ALL_BUTTON_MAP = {**BUTTON_MAP, **PADDLE_MAP}
+RAW_WRONG_BUTTONS = {src for src, dst in _ALL_BUTTON_MAP.items() if src != dst}
+RAW_WRONG_AXES = {src for src, dst in AXIS_MAP.items() if src != dst}
 
 # Human-readable names for the SCUF's actual physical buttons
 SCUF_BUTTON_NAMES = {
@@ -285,9 +296,14 @@ def main():
         axis_names = SCUF_AXIS_NAMES
         mode_label = "RAW (physical device)"
 
+    is_raw_mode = virtual_dev is None
+
     print("=" * 60)
     print(f"Mode: {mode_label}")
     print("Press buttons and move sticks to see events.")
+    if is_raw_mode:
+        print(f"{RED}[ERROR]{RESET} markers indicate inputs the SCUF sends on the")
+        print("wrong evdev code (the bridge remaps these).")
     print("Press Ctrl+C to exit.")
     print("=" * 60)
     print()
@@ -300,11 +316,17 @@ def main():
             if event.type == ecodes.EV_KEY:
                 name = button_names.get(event.code, f"UNKNOWN (0x{event.code:03x})")
                 state = "PRESSED" if event.value == 1 else "RELEASED" if event.value == 0 else f"value={event.value}"
-                print(f"BUTTON: {name:45s} {state}")
+                if is_raw_mode and event.code in RAW_WRONG_BUTTONS:
+                    print(f"{RED}[ERROR] BUTTON: {name:45s} {state}{RESET}")
+                else:
+                    print(f"BUTTON: {name:45s} {state}")
 
             elif event.type == ecodes.EV_ABS:
                 name = axis_names.get(event.code, f"UNKNOWN (0x{event.code:02x})")
-                print(f"AXIS:   {name:45s} value={event.value}")
+                if is_raw_mode and event.code in RAW_WRONG_AXES:
+                    print(f"{RED}[ERROR] AXIS:   {name:45s} value={event.value}{RESET}")
+                else:
+                    print(f"AXIS:   {name:45s} value={event.value}")
 
             else:
                 print(f"OTHER:  type={event.type} code={event.code} value={event.value}")
