@@ -54,11 +54,11 @@ cp "$REPO_DIR/50-scuf-audio.conf" "$WP_CONF_FILE"
 echo "  Installed: $WP_CONF_FILE"
 echo "  (Forces software volume mixing for SCUF audio)"
 
-# Step 3: Install WirePlumber gain boost component
+# Step 3: Install WirePlumber gain boost (Software DSP)
 echo "[3/5] Installing WirePlumber gain boost filter..."
 cp "$REPO_DIR/50-scuf-gain.conf" "$WP_GAIN_FILE"
 echo "  Installed: $WP_GAIN_FILE"
-echo "  (Smart filter: +12 dB gain, auto-links to SCUF sink only)"
+echo "  (Software DSP: +12 dB gain on SCUF output only, mic unaffected)"
 
 # Step 4: Reload udev rules (for the mixer-max rule in 99-scuf-envision.rules)
 echo "[4/5] Reloading udev rules..."
