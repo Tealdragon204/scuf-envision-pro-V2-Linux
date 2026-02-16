@@ -62,14 +62,17 @@ echo "  Service installed (not started yet)"
 # Step 6: Install audio config
 echo "[6/6] Installing audio config (headphone volume fix)..."
 WP_CONF_DIR="/etc/wireplumber/wireplumber.conf.d"
-PW_CONF_DIR="/etc/pipewire/pipewire.conf.d"
+OLD_PW_GAIN_FILE="/etc/pipewire/pipewire.conf.d/50-scuf-gain.conf"
 OLD_DISABLE_RULE="/etc/udev/rules.d/98-scuf-no-audio.rules"
 mkdir -p "$WP_CONF_DIR"
 cp "$SCRIPT_DIR/50-scuf-audio.conf" "$WP_CONF_DIR/"
 echo "  Installed WirePlumber config to $WP_CONF_DIR/50-scuf-audio.conf"
-mkdir -p "$PW_CONF_DIR"
-cp "$SCRIPT_DIR/50-scuf-gain.conf" "$PW_CONF_DIR/"
-echo "  Installed PipeWire gain boost to $PW_CONF_DIR/50-scuf-gain.conf"
+cp "$SCRIPT_DIR/50-scuf-gain.conf" "$WP_CONF_DIR/"
+echo "  Installed WirePlumber gain boost to $WP_CONF_DIR/50-scuf-gain.conf"
+if [ -f "$OLD_PW_GAIN_FILE" ]; then
+    rm -f "$OLD_PW_GAIN_FILE"
+    echo "  Removed stale PipeWire gain config: $OLD_PW_GAIN_FILE"
+fi
 if [ -f "$OLD_DISABLE_RULE" ]; then
     rm -f "$OLD_DISABLE_RULE"
     echo "  Removed old audio-disable workaround: $OLD_DISABLE_RULE"
