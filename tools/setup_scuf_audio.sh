@@ -2,11 +2,10 @@
 # SCUF Envision Pro V2 — Enable headphone audio with working volume control
 #
 # The SCUF's USB audio "Headset" mixer has a broken dB range that makes
-# hardware volume non-functional under PipeWire/WirePlumber. Additionally,
-# the hardware mixer maxes out at -16 dB, making audio very quiet. This script:
-#   1. Installs WirePlumber configs for software volume and gain boost
+# hardware volume non-functional under PipeWire/WirePlumber. This script:
+#   1. Installs WirePlumber config for software volume
 #   2. Sets the hardware mixer to maximum (software handles attenuation)
-#   3. Removes old audio-disable workaround and stale PipeWire configs
+#   3. Removes old workarounds and stale configs from previous installs
 #
 # Run: sudo bash tools/setup_scuf_audio.sh
 #
@@ -18,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 WP_CONF_DIR="/etc/wireplumber/wireplumber.conf.d"
 WP_CONF_FILE="$WP_CONF_DIR/50-scuf-audio.conf"
-WP_GAIN_FILE="$WP_CONF_DIR/50-scuf-gain.conf"
+OLD_WP_GAIN_FILE="$WP_CONF_DIR/50-scuf-gain.conf"
 OLD_PW_GAIN_FILE="/etc/pipewire/pipewire.conf.d/50-scuf-gain.conf"
 OLD_DISABLE_RULE="/etc/udev/rules.d/98-scuf-no-audio.rules"
 
@@ -34,39 +33,29 @@ echo ""
 
 # Step 1: Remove old configs and workarounds
 if [ -f "$OLD_DISABLE_RULE" ]; then
-    echo "[1/5] Removing old audio-disable workaround..."
+    echo "[1/4] Removing old audio-disable workaround..."
     rm -f "$OLD_DISABLE_RULE"
     echo "  Removed: $OLD_DISABLE_RULE"
 else
-    echo "[1/5] No old audio-disable workaround found (OK)"
+    echo "[1/4] No old audio-disable workaround found (OK)"
 fi
-if [ -f "$OLD_PW_GAIN_FILE" ]; then
-    echo "       Removing stale PipeWire gain config..."
-    rm -f "$OLD_PW_GAIN_FILE"
-    echo "  Removed: $OLD_PW_GAIN_FILE"
-    echo "  (Gain filter is now a WirePlumber component instead)"
-fi
+# Clean up old gain configs from previous installs
+rm -f "$OLD_PW_GAIN_FILE" "$OLD_WP_GAIN_FILE"
 
 # Step 2: Install WirePlumber config for software volume
-echo "[2/5] Installing WirePlumber software volume config..."
+echo "[2/4] Installing WirePlumber software volume config..."
 mkdir -p "$WP_CONF_DIR"
 cp "$REPO_DIR/50-scuf-audio.conf" "$WP_CONF_FILE"
 echo "  Installed: $WP_CONF_FILE"
 echo "  (Forces software volume mixing for SCUF audio)"
 
-# Step 3: Install WirePlumber gain boost (Software DSP)
-echo "[3/5] Installing WirePlumber gain boost filter..."
-cp "$REPO_DIR/50-scuf-gain.conf" "$WP_GAIN_FILE"
-echo "  Installed: $WP_GAIN_FILE"
-echo "  (Software DSP: +12 dB gain on SCUF output only, mic unaffected)"
-
-# Step 4: Reload udev rules (for the mixer-max rule in 99-scuf-envision.rules)
-echo "[4/5] Reloading udev rules..."
+# Step 3: Reload udev rules (for the mixer-max rule in 99-scuf-envision.rules)
+echo "[3/4] Reloading udev rules..."
 udevadm control --reload-rules
 echo "  Done"
 
-# Step 5: Set SCUF mixer to max right now (if controller is connected)
-echo "[5/5] Setting SCUF hardware mixer to maximum..."
+# Step 4: Set SCUF mixer to max right now (if controller is connected)
+echo "[4/4] Setting SCUF hardware mixer to maximum..."
 FOUND_CARD=false
 for card_dir in /sys/class/sound/card*/; do
     card_num=$(basename "$card_dir" | sed 's/card//')
@@ -112,14 +101,9 @@ echo "  2. Restart PipeWire + WirePlumber:"
 echo "     systemctl --user restart pipewire wireplumber"
 echo "     (run as your normal user, NOT as root)"
 echo ""
-echo "After restart, the SCUF headphone volume slider should work normally"
-echo "with a +12 dB gain boost to compensate for the quiet hardware output."
-echo ""
-echo "To adjust the gain: edit $WP_GAIN_FILE"
-echo "  Change '\"Gain\" = 12.0' to a different value (6, 16, 18, etc.)"
-echo "  Then restart PipeWire/WirePlumber or reboot."
+echo "After restart, the SCUF headphone volume slider should work normally."
 echo ""
 echo "To undo this setup:"
-echo "  sudo rm $WP_CONF_FILE $WP_GAIN_FILE"
+echo "  sudo rm $WP_CONF_FILE"
 echo "  sudo udevadm control --reload-rules"
 echo "  (then reboot or restart PipeWire/WirePlumber)"
