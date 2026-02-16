@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""
+Toggle SCUF Envision Pro V2 USB audio on/off.
+
+Usage:
+    scuf-audio-toggle              Show current state
+    scuf-audio-toggle status       Same as above
+    scuf-audio-toggle disable      Disable audio (unbind from kernel)
+    scuf-audio-toggle enable       Enable audio (rebind to kernel)
+
+Requires root. Reads/writes /etc/scuf-envision/config.ini and
+immediately applies the change by unbinding/rebinding snd-usb-audio.
+"""
+
+import logging
+import os
+import sys
+
+# Allow running from install location (/opt/scuf-envision/tools/)
+# or from the repo checkout
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from scuf_envision.config import is_audio_disabled, set_audio_disabled, CONFIG_PATH
+from scuf_envision.audio_control import (
+    unbind_scuf_audio,
+    rebind_scuf_audio,
+    _find_scuf_audio_interfaces,
+)
+
+
+def main():
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    if os.geteuid() != 0:
+        print("Error: must run as root (sudo scuf-audio-toggle)")
+        sys.exit(1)
+
+    args = sys.argv[1:]
+    command = args[0] if args else "status"
+
+    if command == "status":
+        disabled = is_audio_disabled()
+        bound = _find_scuf_audio_interfaces(bound_only=True)
+        all_intf = _find_scuf_audio_interfaces(bound_only=False)
+
+        print(f"Config:  {CONFIG_PATH}")
+        print(f"Setting: audio.disabled = {str(disabled).lower()}")
+        print(f"State:   {len(bound)} of {len(all_intf)} audio interface(s) "
+              f"bound to snd-usb-audio")
+        if disabled and bound:
+            print("WARNING: Config says disabled but interfaces are still bound.")
+            print("         Run: sudo scuf-audio-toggle disable")
+        elif not disabled and all_intf and not bound:
+            print("WARNING: Config says enabled but no interfaces are bound.")
+            print("         Run: sudo scuf-audio-toggle enable")
+
+    elif command == "disable":
+        set_audio_disabled(True)
+        n = unbind_scuf_audio()
+        print(f"Audio disabled. Unbound {n} interface(s).")
+        if n == 0:
+            print("(No SCUF audio interfaces were bound — device may not be connected.)")
+            print("Audio will remain disabled on next connect.")
+
+    elif command == "enable":
+        set_audio_disabled(False)
+        n = rebind_scuf_audio()
+        print(f"Audio enabled. Rebound {n} interface(s).")
+        if n == 0:
+            print("(No unbound SCUF audio interfaces found — already enabled "
+                  "or device not connected.)")
+            print("Audio will be enabled on next connect.")
+
+    else:
+        print(f"Unknown command: {command}")
+        print("Usage: scuf-audio-toggle [status|disable|enable]")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

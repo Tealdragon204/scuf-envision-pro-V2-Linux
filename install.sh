@@ -19,7 +19,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Step 1: Install python-evdev
-echo "[1/6] Installing dependencies..."
+echo "[1/8] Installing dependencies..."
 if command -v pacman &>/dev/null; then
     pacman -S --noconfirm --needed python-evdev
 elif command -v apt &>/dev/null; then
@@ -32,7 +32,7 @@ else
 fi
 
 # Step 2: Load uinput module
-echo "[2/6] Loading uinput kernel module..."
+echo "[2/8] Loading uinput kernel module..."
 modprobe uinput
 if ! grep -q "^uinput$" /etc/modules-load.d/*.conf 2>/dev/null; then
     echo "uinput" > /etc/modules-load.d/uinput.conf
@@ -40,28 +40,43 @@ if ! grep -q "^uinput$" /etc/modules-load.d/*.conf 2>/dev/null; then
 fi
 
 # Step 3: Install udev rules
-echo "[3/6] Installing udev rules..."
+echo "[3/8] Installing udev rules..."
 cp "$SCRIPT_DIR/99-scuf-envision.rules" /etc/udev/rules.d/
 udevadm control --reload-rules
 udevadm trigger
 echo "  Installed to /etc/udev/rules.d/99-scuf-envision.rules"
 
 # Step 4: Install driver
-echo "[4/6] Installing driver..."
+echo "[4/8] Installing driver..."
 mkdir -p "$INSTALL_DIR"
 cp -r "$SCRIPT_DIR/scuf_envision" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/tools" "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/tools/scuf-audio-toggle"
+ln -sf "$INSTALL_DIR/tools/scuf-audio-toggle" /usr/local/bin/scuf-audio-toggle
 echo "  Installed to $INSTALL_DIR"
+echo "  Installed scuf-audio-toggle to /usr/local/bin/"
 
 # Step 5: Install and enable systemd service
-echo "[5/6] Installing and enabling systemd service..."
+echo "[5/8] Installing default config..."
+CONF_DIR="/etc/scuf-envision"
+CONF_FILE="$CONF_DIR/config.ini"
+mkdir -p "$CONF_DIR"
+if [ ! -f "$CONF_FILE" ]; then
+    cp "$SCRIPT_DIR/config.ini.default" "$CONF_FILE"
+    echo "  Installed default config to $CONF_FILE"
+else
+    echo "  Config already exists at $CONF_FILE (preserved)"
+fi
+
+# Step 6: Install and enable systemd service
+echo "[6/8] Installing and enabling systemd service..."
 cp "$SCRIPT_DIR/scuf-envision.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now scuf-envision.service
 echo "  Service installed, enabled at boot, and started"
 
 # Step 6: Install audio config
-echo "[6/6] Installing audio config (headphone volume fix)..."
+echo "[7/8] Installing audio config (headphone volume fix)..."
 WP_CONF_DIR="/etc/wireplumber/wireplumber.conf.d"
 OLD_DISABLE_RULE="/etc/udev/rules.d/98-scuf-no-audio.rules"
 OLD_PW_GAIN_FILE="/etc/pipewire/pipewire.conf.d/50-scuf-gain.conf"
@@ -76,6 +91,11 @@ if [ -f "$OLD_DISABLE_RULE" ]; then
     echo "  Removed old audio-disable workaround: $OLD_DISABLE_RULE"
 fi
 echo "  Note: Restart PipeWire/WirePlumber or reboot for audio changes to take effect"
+
+echo "[8/8] Audio toggle tool ready"
+echo "  To completely disable SCUF audio devices: sudo scuf-audio-toggle disable"
+echo "  To re-enable: sudo scuf-audio-toggle enable"
+echo "  To check status: sudo scuf-audio-toggle status"
 
 echo ""
 echo "======================================"
@@ -108,6 +128,11 @@ echo "  journalctl -u scuf-envision.service -f"
 echo ""
 echo "  # Test with diagnostic tool:"
 echo "  sudo python3 $INSTALL_DIR/tools/diag.py"
+echo ""
+echo "  # Disable/enable SCUF headphone audio:"
+echo "  sudo scuf-audio-toggle disable"
+echo "  sudo scuf-audio-toggle enable"
+echo "  sudo scuf-audio-toggle status"
 echo ""
 echo "Steam users: set this environment variable to prevent double input:"
 echo "  SDL_GAMECONTROLLER_IGNORE_DEVICES=0x1b1c/0x3a05,0x1b1c/0x3a08"

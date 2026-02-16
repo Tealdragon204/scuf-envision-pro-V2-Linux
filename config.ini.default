@@ -1,0 +1,8 @@
+[audio]
+# Set to true to completely disable USB audio (headphone jack) on the
+# SCUF controller. The audio device is unbound from the kernel driver
+# so applications (PipeWire, PulseAudio, etc.) will not see it at all.
+#
+# To toggle at runtime:  sudo scuf-audio-toggle disable|enable
+# To apply after editing: sudo systemctl restart scuf-envision
+disabled = false
