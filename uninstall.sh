@@ -25,8 +25,8 @@ udevadm control --reload-rules
 
 echo "[3/4] Removing audio configs..."
 rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
-rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-gain.conf
-rm -f /etc/pipewire/pipewire.conf.d/50-scuf-gain.conf
+rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-gain.conf   # legacy, from older installs
+rm -f /etc/pipewire/pipewire.conf.d/50-scuf-gain.conf         # legacy, from older installs
 echo "  Removed WirePlumber and PipeWire audio configs (if present)"
 
 echo "[4/4] Removing installed files..."
