@@ -4,10 +4,9 @@
 # The SCUF's USB audio "Headset" mixer has a broken dB range that makes
 # hardware volume non-functional under PipeWire/WirePlumber. Additionally,
 # the hardware mixer maxes out at -16 dB, making audio very quiet. This script:
-#   1. Installs a WirePlumber config to use software volume mixing
-#   2. Installs a PipeWire filter-chain for +12 dB gain boost
-#   3. Sets the hardware mixer to maximum (software handles attenuation)
-#   4. Removes the old audio-disable workaround if present
+#   1. Installs WirePlumber configs for software volume and gain boost
+#   2. Sets the hardware mixer to maximum (software handles attenuation)
+#   3. Removes old audio-disable workaround and stale PipeWire configs
 #
 # Run: sudo bash tools/setup_scuf_audio.sh
 #
@@ -19,8 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 WP_CONF_DIR="/etc/wireplumber/wireplumber.conf.d"
 WP_CONF_FILE="$WP_CONF_DIR/50-scuf-audio.conf"
-PW_CONF_DIR="/etc/pipewire/pipewire.conf.d"
-PW_GAIN_FILE="$PW_CONF_DIR/50-scuf-gain.conf"
+WP_GAIN_FILE="$WP_CONF_DIR/50-scuf-gain.conf"
+OLD_PW_GAIN_FILE="/etc/pipewire/pipewire.conf.d/50-scuf-gain.conf"
 OLD_DISABLE_RULE="/etc/udev/rules.d/98-scuf-no-audio.rules"
 
 if [ "$EUID" -ne 0 ]; then
@@ -33,29 +32,33 @@ echo "SCUF Envision Pro V2 - Audio Setup"
 echo "======================================"
 echo ""
 
-# Step 1: Remove old audio-disable workaround
+# Step 1: Remove old configs and workarounds
 if [ -f "$OLD_DISABLE_RULE" ]; then
     echo "[1/5] Removing old audio-disable workaround..."
     rm -f "$OLD_DISABLE_RULE"
     echo "  Removed: $OLD_DISABLE_RULE"
-    echo "  (The SCUF audio driver will now be allowed to load)"
 else
     echo "[1/5] No old audio-disable workaround found (OK)"
 fi
+if [ -f "$OLD_PW_GAIN_FILE" ]; then
+    echo "       Removing stale PipeWire gain config..."
+    rm -f "$OLD_PW_GAIN_FILE"
+    echo "  Removed: $OLD_PW_GAIN_FILE"
+    echo "  (Gain filter is now a WirePlumber component instead)"
+fi
 
 # Step 2: Install WirePlumber config for software volume
-echo "[2/5] Installing WirePlumber config..."
+echo "[2/5] Installing WirePlumber software volume config..."
 mkdir -p "$WP_CONF_DIR"
 cp "$REPO_DIR/50-scuf-audio.conf" "$WP_CONF_FILE"
 echo "  Installed: $WP_CONF_FILE"
 echo "  (Forces software volume mixing for SCUF audio)"
 
-# Step 3: Install PipeWire filter-chain for gain boost
-echo "[3/5] Installing PipeWire gain boost filter..."
-mkdir -p "$PW_CONF_DIR"
-cp "$REPO_DIR/50-scuf-gain.conf" "$PW_GAIN_FILE"
-echo "  Installed: $PW_GAIN_FILE"
-echo "  (Applies +12 dB gain boost to compensate for hardware -16 dB ceiling)"
+# Step 3: Install WirePlumber gain boost component
+echo "[3/5] Installing WirePlumber gain boost filter..."
+cp "$REPO_DIR/50-scuf-gain.conf" "$WP_GAIN_FILE"
+echo "  Installed: $WP_GAIN_FILE"
+echo "  (Smart filter: +12 dB gain, auto-links to SCUF sink only)"
 
 # Step 4: Reload udev rules (for the mixer-max rule in 99-scuf-envision.rules)
 echo "[4/5] Reloading udev rules..."
@@ -112,11 +115,11 @@ echo ""
 echo "After restart, the SCUF headphone volume slider should work normally"
 echo "with a +12 dB gain boost to compensate for the quiet hardware output."
 echo ""
-echo "To adjust the gain: edit $PW_GAIN_FILE"
-echo "  Change 'gain = 12.0' to a different value (6, 16, 18, etc.)"
-echo "  Then restart PipeWire or reboot."
+echo "To adjust the gain: edit $WP_GAIN_FILE"
+echo "  Change '\"Gain\" = 12.0' to a different value (6, 16, 18, etc.)"
+echo "  Then restart PipeWire/WirePlumber or reboot."
 echo ""
 echo "To undo this setup:"
-echo "  sudo rm $WP_CONF_FILE $PW_GAIN_FILE"
+echo "  sudo rm $WP_CONF_FILE $WP_GAIN_FILE"
 echo "  sudo udevadm control --reload-rules"
 echo "  (then reboot or restart PipeWire/WirePlumber)"
