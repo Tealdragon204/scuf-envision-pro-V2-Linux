@@ -53,11 +53,12 @@ cp -r "$SCRIPT_DIR/scuf_envision" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/tools" "$INSTALL_DIR/"
 echo "  Installed to $INSTALL_DIR"
 
-# Step 5: Install systemd service
-echo "[5/6] Installing systemd service..."
+# Step 5: Install and enable systemd service
+echo "[5/6] Installing and enabling systemd service..."
 cp "$SCRIPT_DIR/scuf-envision.service" /etc/systemd/system/
 systemctl daemon-reload
-echo "  Service installed (not started yet)"
+systemctl enable --now scuf-envision.service
+echo "  Service installed, enabled at boot, and started"
 
 # Step 6: Install audio config
 echo "[6/6] Installing audio config (headphone volume fix)..."
@@ -81,19 +82,32 @@ echo "======================================"
 echo "Installation complete!"
 echo "======================================"
 echo ""
-echo "Quick start:"
-echo "  # Test with diagnostic tool first:"
-echo "  sudo python3 $INSTALL_DIR/tools/diag.py"
+
+# Report service status
+echo "Service status:"
+if systemctl is-active --quiet scuf-envision.service; then
+    echo "  [OK] scuf-envision.service is RUNNING"
+else
+    echo "  [!!] scuf-envision.service is NOT running"
+    echo "       Check logs: journalctl -u scuf-envision.service -e"
+fi
+if systemctl is-enabled --quiet scuf-envision.service; then
+    echo "  [OK] Enabled (will start automatically at boot)"
+else
+    echo "  [!!] NOT enabled at boot"
+    echo "       Run: sudo systemctl enable scuf-envision.service"
+fi
 echo ""
-echo "  # Run the driver manually:"
-echo "  sudo python3 -m scuf_envision"
-echo "  (run from $INSTALL_DIR)"
-echo ""
-echo "  # Or enable as a service:"
-echo "  sudo systemctl enable --now scuf-envision.service"
-echo ""
+
+echo "Useful commands:"
 echo "  # Check service status:"
 echo "  sudo systemctl status scuf-envision.service"
+echo ""
+echo "  # View service logs:"
+echo "  journalctl -u scuf-envision.service -f"
+echo ""
+echo "  # Test with diagnostic tool:"
+echo "  sudo python3 $INSTALL_DIR/tools/diag.py"
 echo ""
 echo "Steam users: set this environment variable to prevent double input:"
 echo "  SDL_GAMECONTROLLER_IGNORE_DEVICES=0x1b1c/0x3a05,0x1b1c/0x3a08"
