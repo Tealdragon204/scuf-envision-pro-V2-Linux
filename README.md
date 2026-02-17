@@ -110,6 +110,28 @@ sudo udevadm control --reload-rules
 # Then reboot or restart PipeWire/WirePlumber
 ```
 
+### Step 6: Disable SCUF Audio Entirely (Optional)
+
+If you don't use the controller's headphone jack at all and want to remove it from your audio device list completely:
+
+```bash
+sudo scuf-audio-toggle disable
+```
+
+This unbinds the SCUF USB audio interface from the kernel driver so PipeWire/PulseAudio won't see it. The setting persists across reboots (stored in `/etc/scuf-envision/config.ini`).
+
+To re-enable:
+
+```bash
+sudo scuf-audio-toggle enable
+```
+
+To check current state:
+
+```bash
+sudo scuf-audio-toggle status
+```
+
 ---
 
 ## Usage
@@ -223,6 +245,8 @@ This does everything in one step:
 - Loads `uinput` kernel module (persists across reboots)
 - Installs udev rules
 - Copies the driver to `/opt/scuf-envision`
+- Installs default config to `/etc/scuf-envision/config.ini` (preserved on reinstall)
+- Installs the `scuf-audio-toggle` CLI tool to `/usr/local/bin/`
 - Installs the systemd service
 - Installs audio config (WirePlumber software volume fix)
 
@@ -232,7 +256,7 @@ This does everything in one step:
 sudo bash uninstall.sh
 ```
 
-Removes the service, udev rules, and installed files. Does not remove `python-evdev` or the `uinput` module.
+Removes the service, udev rules, audio configs, CLI tool, and installed files. Re-enables SCUF audio if it was disabled. Does not remove `python-evdev`, the `uinput` module, or `/etc/scuf-envision/` (your config is preserved).
 
 ---
 
@@ -334,16 +358,20 @@ rm -rf ~/scuf-envision-pro-V2-Linux
 If you want to remove everything in one go, you can run these commands back-to-back:
 
 ```bash
+# Re-enable audio if it was disabled
+sudo scuf-audio-toggle enable 2>/dev/null; true
+
 # Stop and remove service
 sudo systemctl stop scuf-envision.service 2>/dev/null; true
 sudo systemctl disable scuf-envision.service 2>/dev/null; true
 sudo rm -f /etc/systemd/system/scuf-envision.service
 sudo systemctl daemon-reload
 
-# Remove installed driver files
+# Remove CLI tool and installed driver files
+sudo rm -f /usr/local/bin/scuf-audio-toggle
 sudo rm -rf /opt/scuf-envision
 
-# Remove all udev rules
+# Remove all udev rules and audio configs
 sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
 sudo rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
 sudo udevadm control --reload-rules
@@ -351,6 +379,9 @@ sudo udevadm trigger
 
 # Remove uinput auto-load
 sudo rm -f /etc/modules-load.d/uinput.conf
+
+# Remove config (optional - remove if you don't plan to reinstall)
+sudo rm -rf /etc/scuf-envision
 
 # Remove SDL ignore variable
 rm -f ~/.config/environment.d/scuf.conf
@@ -365,6 +396,7 @@ After this, **unplug and replug** the controller and **log out / log back in** t
 For safety, the uninstall process does **not** touch these:
 - **python-evdev package** - other software may use it; remove manually if you want (see Step 6)
 - **uinput kernel module** - it's a standard Linux module; removing the auto-load config just prevents it from loading on boot, it doesn't uninstall it
+- **Config directory** (`/etc/scuf-envision/`) - preserved so reinstalls keep your settings; remove manually with `sudo rm -rf /etc/scuf-envision`
 - **Your Steam library or game configs** - no game settings are modified by this driver
 
 ---
@@ -494,10 +526,14 @@ scuf-envision-pro-V2-Linux/
     bridge.py                 # Core event loop (read -> remap -> emit)
     input_filter.py           # Radial deadzone, jitter suppression
     virtual_gamepad.py        # Virtual Xbox controller via uinput
+    config.py                 # Config file loading/saving (/etc/scuf-envision/config.ini)
+    audio_control.py          # USB audio unbind/rebind via sysfs
   tools/
     diag.py                   # Raw event diagnostic tool
     setup_scuf_audio.sh       # Headphone audio setup (WirePlumber software volume)
-  50-scuf-audio.conf           # WirePlumber config for headphone audio
+    scuf-audio-toggle         # CLI tool: disable/enable SCUF audio devices
+  config.ini.default          # Default config (copied to /etc/scuf-envision/ on install)
+  50-scuf-audio.conf          # WirePlumber config for headphone audio
   99-scuf-envision.rules      # udev rules for device permissions
   scuf-envision.service       # systemd service file
   install.sh                  # Automated installer
