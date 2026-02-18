@@ -119,6 +119,7 @@ To re-enable:
 ```bash
 sudo /opt/scuf-envision/tools/scuf-audio-toggle enable
 ```
+Then disconnect and reconnect the controller, audio should then re-enable
 
 To check current state:
 
