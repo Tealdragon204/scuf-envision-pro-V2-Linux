@@ -51,169 +51,41 @@ git clone https://github.com/Tealdragon204/scuf-envision-pro-V2-Linux.git
 cd scuf-envision-pro-V2-Linux
 ```
 
-### Step 2: Install Dependencies
-
-**Arch / Garuda / Manjaro:**
-```bash
-sudo pacman -S python-evdev
-```
-
-**Ubuntu / Debian / Pop!_OS:**
-```bash
-sudo apt install python3-evdev
-```
-
-**Fedora:**
-```bash
-sudo dnf install python3-evdev
-```
-
-### Step 3: Load the uinput Kernel Module
-
-The driver needs `uinput` to create a virtual gamepad. Load it now and make it persist across reboots:
+### Step 2: Run the Installer
 
 ```bash
-# Load it now
-sudo modprobe uinput
-
-# Make it load automatically on boot
-echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf
-```
-
-### Step 4: Install udev Rules (Recommended)
-
-This grants your user permission to access the controller devices without needing `sudo` every time:
-
-```bash
-sudo cp 99-scuf-envision.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-### Step 5: Enable Headphone Audio (Recommended)
-
-The SCUF controller has a built-in headphone jack, but its USB audio has a broken "Headset" mixer that reports an invalid dB range, making the volume slider cosmetic-only.
-
-This one-time fix installs a WirePlumber config that forces software volume mixing:
-
-```bash
-sudo bash tools/setup_scuf_audio.sh
-```
-
-Then **reboot** (or run `systemctl --user restart pipewire wireplumber` as your normal user). After that, the headphone volume slider will work normally. The udev rules also auto-set the hardware mixer to max on each connect.
-
-To undo:
-
-```bash
-sudo rm /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
-sudo udevadm control --reload-rules
-# Then reboot or restart PipeWire/WirePlumber
-```
-
-### Step 6: Disable SCUF Audio Entirely (Optional) 
-
-If you don't use the controller's headphone jack at all and want to remove it from your audio device list completely:
-
-First ensure you're in the correct directory
-```bash
-sudo tools/scuf-audio-toggle disable
-```
-
-This unbinds the SCUF USB audio interface from the kernel driver so PipeWire/PulseAudio won't see it. The setting persists across reboots (stored in `/etc/scuf-envision/config.ini`).
-
-To re-enable:
-
-```bash
-sudo tools/scuf-audio-toggle enable
-```
-
-To check current state:
-
-```bash
-sudo tools/scuf-audio-toggle status
-```
-
----
-
-## Usage
-
-### Quick Test: Diagnostic Tool
-
-Before running the full driver, plug in your controller via USB and run the diagnostic tool to see raw events:
-
-```bash
-sudo python3 tools/diag.py
-```
-
-This shows every button press and stick movement with labels showing what the SCUF sends vs what it should send. Press each button and move each stick to verify everything is detected. Press **Ctrl+C** to exit.
-
-### Running the Driver (Manual)
-
-```bash
-cd scuf-envision-pro-V2-Linux
-sudo python3 -m scuf_envision
-```
-
-You should see output like:
-
-```
-12:00:00 [INFO] scuf_envision.bridge: SCUF Envision Pro V2 Linux Driver starting...
-12:00:00 [INFO] scuf_envision.discovery: SCUF primary gamepad: /dev/input/event26
-12:00:00 [INFO] scuf_envision.bridge: Exclusively grabbed: Scuf Gaming SCUF Envision Pro Controller V2
-12:00:00 [INFO] scuf_envision.virtual_gamepad: Created virtual gamepad: /dev/input/event27
-12:00:00 [INFO] scuf_envision.bridge: Bridge started - SCUF -> Xbox translation active
-```
-
-The driver runs until you press **Ctrl+C** or unplug the controller.
-
-### Verify It's Working
-
-With the driver running, open another terminal:
-
-```bash
-# You should see the virtual Xbox controller listed
-cat /proc/bus/input/devices | grep -A5 "SCUF Envision Pro V2 (Xbox Mode)"
-
-# Or test with evtest (install: sudo pacman -S evtest)
-sudo evtest
-# Select the "SCUF Envision Pro V2 (Xbox Mode)" device
-```
-
-### Running as a Systemd Service (Auto-Start)
-
-To have the driver start automatically when you plug in the controller:
-
-```bash
-# One-time install using the install script
 sudo bash install.sh
-
-# Or manually install the service
-sudo cp scuf-envision.service /etc/systemd/system/
-sudo systemctl daemon-reload
-
-# Enable and start
-sudo systemctl enable --now scuf-envision.service
-
-# Check status
-sudo systemctl status scuf-envision.service
-
-# View logs
-journalctl -u scuf-envision.service -f
 ```
 
-To stop:
+This does everything automatically:
+- Installs `python-evdev` (the only dependency)
+- Loads the `uinput` kernel module (persists across reboots)
+- Installs udev rules (device permissions)
+- Copies the driver to `/opt/scuf-envision`
+- Installs default config to `/etc/scuf-envision/config.ini`
+- Installs the `scuf-audio-toggle` tool
+- Installs and starts the systemd service (auto-starts on boot)
+- Installs the WirePlumber audio fix (headphone volume)
+
+### Step 3: Reboot
 
 ```bash
-sudo systemctl stop scuf-envision.service
+sudo reboot
 ```
+
+A reboot ensures the audio fix, udev rules, and systemd service all take effect cleanly.
+
+> **You can now delete the cloned repository.** After installation, everything runs from `/opt/scuf-envision` and system directories. The repo is no longer needed.
 
 ---
 
-## Steam Configuration
+## Post-Install Setup
+
+### Steam Configuration
 
 Steam's built-in controller support may try to read the raw SCUF device (with broken mappings) alongside our virtual Xbox controller, causing double-input or conflicting mappings.
 
-### Option A: Environment Variable (Recommended)
+**Option A: Environment Variable (Recommended)**
 
 Tell SDL to ignore the physical SCUF device entirely:
 
@@ -225,95 +97,157 @@ echo 'SDL_GAMECONTROLLER_IGNORE_DEVICES=0x1b1c/0x3a05' > ~/.config/environment.d
 
 Log out and back in for this to take effect.
 
-### Option B: Steam Settings
+**Option B: Steam Settings**
 
 1. Open Steam -> Settings -> Controller -> General Controller Settings
 2. Find the SCUF Envision Pro entry (if listed) and disable it
 3. The virtual "SCUF Envision Pro V2 (Xbox Mode)" controller should be listed as an Xbox controller
 
----
+### Disable SCUF Audio Entirely (Optional)
 
-## Automated Install / Uninstall
+If you don't use the controller's headphone jack at all and want to remove it from your audio device list completely:
 
-### Full Install
-
+First ensure you're in the correct directory
 ```bash
-sudo bash install.sh
+sudo /opt/scuf-envision/tools/scuf-audio-toggle disable
 ```
 
-This does everything in one step:
-- Installs `python-evdev`
-- Loads `uinput` kernel module (persists across reboots)
-- Installs udev rules
-- Copies the driver to `/opt/scuf-envision`
-- Installs default config to `/etc/scuf-envision/config.ini` (preserved on reinstall)
-- Installs the `scuf-audio-toggle` CLI tool to `/usr/local/bin/`
-- Installs the systemd service
-- Installs audio config (WirePlumber software volume fix)
-- Starts the systemd service
-- Sets service to boot at system startup
+This unbinds the SCUF USB audio interface from the kernel driver so PipeWire/PulseAudio won't see it. The setting persists across reboots (stored in `/etc/scuf-envision/config.ini`).
 
-### Full Uninstall
+To re-enable:
 
 ```bash
-sudo bash uninstall.sh
+sudo /opt/scuf-envision/tools/scuf-audio-toggle enable
 ```
 
-Removes the service, udev rules, audio configs, CLI tool, and installed files. Re-enables SCUF audio if it was disabled. Does not remove `python-evdev`, the `uinput` module, or `/etc/scuf-envision/` (your config is preserved).
+To check current state:
+
+```bash
+sudo /opt/scuf-envision/tools/scuf-audio-toggle status
+```
 
 ---
 
-## Complete Uninstallation & Reversal Guide
+## Usage
 
-If the driver doesn't work for you or you simply want to remove it, follow this guide to undo **every change** made during installation. After completing these steps your system will be exactly as it was before.
+### Verify It's Working
 
-### Step 1: Stop and Remove the Systemd Service
-
-If you set up the driver as a service:
+The driver runs automatically as a systemd service. To verify:
 
 ```bash
-# Stop the running service
+# Check the service is running
+sudo systemctl status scuf-envision.service
+
+# You should see the virtual Xbox controller listed
+cat /proc/bus/input/devices | grep -A5 "SCUF Envision Pro V2 (Xbox Mode)"
+
+# Or test with evtest (install: sudo pacman -S evtest)
+sudo evtest
+# Select the "SCUF Envision Pro V2 (Xbox Mode)" device
+```
+
+### Service Logs
+
+```bash
+# View live logs
+journalctl -u scuf-envision.service -f
+
+# View recent logs
+journalctl -u scuf-envision.service -e
+```
+
+### Diagnostic Tool
+
+To see raw events from the controller (useful for troubleshooting):
+
+```bash
+sudo python3 /opt/scuf-envision/tools/diag.py
+```
+
+This shows every button press and stick movement with labels showing what the SCUF sends vs what it should send. Press each button and move each stick to verify everything is detected. Press **Ctrl+C** to exit.
+
+### Useful Commands
+
+```bash
+# Check service status
+sudo systemctl status scuf-envision.service
+
+# Stop the service
 sudo systemctl stop scuf-envision.service
 
-# Disable it from starting on boot
+# Restart the service
+sudo systemctl restart scuf-envision.service
+
+# View live logs
+journalctl -u scuf-envision.service -f
+
+# Run diagnostic tool
+sudo python3 /opt/scuf-envision/tools/diag.py
+
+# Disable/enable SCUF headphone audio
+sudo /opt/scuf-envision/tools/scuf-audio-toggle disable
+sudo /opt/scuf-envision/tools/scuf-audio-toggle enable
+sudo /opt/scuf-envision/tools/scuf-audio-toggle status
+```
+
+---
+
+## Uninstallation
+
+### Using the Uninstall Script
+
+The uninstall script is installed alongside the driver. You do **not** need the cloned repository:
+
+```bash
+sudo bash /opt/scuf-envision/uninstall.sh
+```
+
+This removes the service, udev rules, audio configs, CLI tool, and installed files. If you had SCUF audio disabled, it re-enables it before removal. Does not remove `python-evdev`, the `uinput` module, or `/etc/scuf-envision/` (your config is preserved).
+
+Then **reboot** (or log out and back in) to ensure all changes take effect.
+
+### Complete Uninstallation & Reversal Guide
+
+If you want to undo **every change** made during installation and return your system to exactly how it was before, follow these steps:
+
+**Step 1: Re-enable SCUF audio (if you disabled it)**
+
+```bash
+sudo /opt/scuf-envision/tools/scuf-audio-toggle enable
+```
+
+**Step 2: Stop and remove the systemd service**
+
+```bash
+sudo systemctl stop scuf-envision.service
 sudo systemctl disable scuf-envision.service
-
-# Remove the service file
 sudo rm -f /etc/systemd/system/scuf-envision.service
-
-# Reload systemd so it forgets the service
 sudo systemctl daemon-reload
 ```
 
-If you were running the driver manually (not as a service), just press **Ctrl+C** in the terminal where it's running to stop it.
-
-### Step 2: Remove the Driver Files
-
-If you used `install.sh`, the driver was copied to `/opt/scuf-envision`:
+**Step 3: Remove driver files and CLI tool**
 
 ```bash
+sudo rm -f /usr/local/bin/scuf-audio-toggle
 sudo rm -rf /opt/scuf-envision
 ```
 
-### Step 3: Remove udev Rules
-
-The installation created up to two udev rule files:
+**Step 4: Remove udev rules and audio configs**
 
 ```bash
-# Remove the device permission rules
 sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
-
-# Remove the audio config (if you ran setup_scuf_audio.sh)
 sudo rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
-
-# Reload udev so the rules take effect immediately
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-### Step 4: Remove the uinput Auto-Load Config
+**Step 5: Remove config directory**
 
-The installation configured the `uinput` kernel module to load automatically on boot. To undo this:
+```bash
+sudo rm -rf /etc/scuf-envision
+```
+
+**Step 6: Remove the uinput auto-load config**
 
 ```bash
 sudo rm -f /etc/modules-load.d/uinput.conf
@@ -321,9 +255,7 @@ sudo rm -f /etc/modules-load.d/uinput.conf
 
 > **Note:** Other software may also use `uinput` (e.g., other controller drivers, remote desktop tools). If you're unsure, you can leave this file in place - it's harmless.
 
-### Step 5: Remove the SDL Environment Variable (Steam Fix)
-
-If you set the SDL ignore variable for Steam:
+**Step 7: Remove the SDL environment variable (Steam fix)**
 
 ```bash
 rm -f ~/.config/environment.d/scuf.conf
@@ -331,7 +263,7 @@ rm -f ~/.config/environment.d/scuf.conf
 
 Log out and back in for this change to take effect.
 
-### Step 6: Remove the python-evdev Package (Optional)
+**Step 8: Remove the python-evdev package (optional)**
 
 This is optional because `python-evdev` is a common package that other software may depend on.
 
@@ -350,19 +282,13 @@ sudo apt remove python3-evdev
 sudo dnf remove python3-evdev
 ```
 
-### Step 7: Delete the Cloned Repository (Optional)
-
-```bash
-rm -rf ~/scuf-envision-pro-V2-Linux
-```
-
 ### Quick Uninstall (All-in-One)
 
 If you want to remove everything in one go, you can run these commands back-to-back:
 
 ```bash
 # Re-enable audio if it was disabled
-sudo scuf-audio-toggle enable 2>/dev/null; true
+sudo /opt/scuf-envision/tools/scuf-audio-toggle enable 2>/dev/null; true
 
 # Stop and remove service
 sudo systemctl stop scuf-envision.service 2>/dev/null; true
@@ -380,11 +306,11 @@ sudo rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
+# Remove config
+sudo rm -rf /etc/scuf-envision
+
 # Remove uinput auto-load
 sudo rm -f /etc/modules-load.d/uinput.conf
-
-# Remove config (optional - remove if you don't plan to reinstall)
-sudo rm -rf /etc/scuf-envision
 
 # Remove SDL ignore variable
 rm -f ~/.config/environment.d/scuf.conf
@@ -392,14 +318,13 @@ rm -f ~/.config/environment.d/scuf.conf
 echo "All SCUF driver components removed."
 ```
 
-After this, **unplug and replug** the controller and **log out / log back in** to ensure all changes take effect. Your controller will go back to its default (unmapped) Linux behavior.
+After this, **reboot** to ensure all changes take effect. Your controller will go back to its default (unmapped) Linux behavior.
 
 ### What the Uninstall Does NOT Change
 
 For safety, the uninstall process does **not** touch these:
-- **python-evdev package** - other software may use it; remove manually if you want (see Step 6)
+- **python-evdev package** - other software may use it; remove manually if you want (see Step 8)
 - **uinput kernel module** - it's a standard Linux module; removing the auto-load config just prevents it from loading on boot, it doesn't uninstall it
-- **Config directory** (`/etc/scuf-envision/`) - preserved so reinstalls keep your settings; remove manually with `sudo rm -rf /etc/scuf-envision`
 - **Your Steam library or game configs** - no game settings are modified by this driver
 
 ---
@@ -419,10 +344,10 @@ ERROR: No SCUF Envision Pro V2 controller found!
 
 ### Controller disconnects after a few seconds
 
-This can be caused by the USB audio interface. Make sure the audio setup is applied:
+This can be caused by the USB audio interface. Make sure the audio setup is applied (this is done automatically by `install.sh`, but if you need to re-apply):
 
 ```bash
-sudo bash tools/setup_scuf_audio.sh
+sudo bash /opt/scuf-envision/tools/setup_scuf_audio.sh
 # Reboot or restart WirePlumber, then replug the controller
 ```
 
@@ -431,14 +356,14 @@ sudo bash tools/setup_scuf_audio.sh
 The driver exclusively grabs the physical device to prevent this. If it still happens:
 
 1. Make sure only one instance of the driver is running
-2. Set the SDL ignore variable (see Steam Configuration above)
+2. Set the SDL ignore variable (see Post-Install Setup above)
 3. Check: `cat /proc/bus/input/devices | grep -c "SCUF"` - should show 2 entries (physical + virtual), not more
 
 ### Permission denied errors
 
 ```bash
-# Make sure udev rules are installed
-sudo cp 99-scuf-envision.rules /etc/udev/rules.d/
+# Make sure udev rules are installed (done automatically by install.sh)
+sudo cp /opt/scuf-envision/../99-scuf-envision.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
@@ -458,7 +383,7 @@ echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf
 1. **Check receiver:** `lsusb | grep 1b1c` - you should see `1b1c:3a08` for the wireless receiver
 2. **Power on the controller** - the receiver only exposes gamepad inputs when the controller is paired and powered on
 3. **Re-pair if needed** - hold the pairing button on the receiver, then hold the pairing button on the controller
-4. **Run diagnostics:** `sudo python3 tools/diag.py` - it will show both wired and wireless devices
+4. **Run diagnostics:** `sudo python3 /opt/scuf-envision/tools/diag.py` - it will show both wired and wireless devices
 
 ### Wireless: controller reconnection
 
@@ -469,6 +394,74 @@ sudo journalctl -u scuf-envision.service -f
 # Look for: "Controller disconnected. Waiting for reconnection..."
 # Then:     "Controller reconnected!"
 ```
+
+---
+
+## Manual (Portable) Installation
+
+> **Most users should use `install.sh` instead** (see Installation above). This section is for advanced users who want to run the driver directly from the cloned repository without installing system-wide.
+
+### Install Dependencies
+
+**Arch / Garuda / Manjaro:**
+```bash
+sudo pacman -S python-evdev
+```
+
+**Ubuntu / Debian / Pop!_OS:**
+```bash
+sudo apt install python3-evdev
+```
+
+**Fedora:**
+```bash
+sudo dnf install python3-evdev
+```
+
+### Load the uinput Kernel Module
+
+```bash
+# Load it now
+sudo modprobe uinput
+
+# Make it load automatically on boot
+echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf
+```
+
+### Install udev Rules
+
+```bash
+sudo cp 99-scuf-envision.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+### Enable Headphone Audio (Optional)
+
+```bash
+sudo bash tools/setup_scuf_audio.sh
+```
+
+Then **reboot** (or run `systemctl --user restart pipewire wireplumber` as your normal user).
+
+To undo:
+
+```bash
+sudo rm /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
+sudo udevadm control --reload-rules
+# Then reboot or restart PipeWire/WirePlumber
+```
+
+### Run the Driver Manually
+
+```bash
+cd scuf-envision-pro-V2-Linux
+sudo python3 -m scuf_envision
+```
+
+The driver runs until you press **Ctrl+C** or unplug the controller.
+
+> **Note:** When running manually from the repo, the `scuf-audio-toggle` tool is at `tools/scuf-audio-toggle` (relative to the repo root). The config file is still at `/etc/scuf-envision/config.ini`.
 
 ---
 

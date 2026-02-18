@@ -17,8 +17,9 @@ import os
 import sys
 
 # Allow running from install location (/opt/scuf-envision/tools/)
-# or from the repo checkout
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# or from the repo checkout. realpath resolves symlinks (e.g.
+# /usr/local/bin/scuf-audio-toggle -> /opt/scuf-envision/tools/scuf-audio-toggle)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 from scuf_envision.config import is_audio_disabled, set_audio_disabled, CONFIG_PATH
 from scuf_envision.audio_control import (
