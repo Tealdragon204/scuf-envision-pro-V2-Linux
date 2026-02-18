@@ -46,17 +46,18 @@ udevadm control --reload-rules
 udevadm trigger
 echo "  Installed to /etc/udev/rules.d/99-scuf-envision.rules"
 
-# Step 4: Install driver
+# Step 4: Install driver and tools
 echo "[4/8] Installing driver..."
 mkdir -p "$INSTALL_DIR"
 cp -r "$SCRIPT_DIR/scuf_envision" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/tools" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/uninstall.sh" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/tools/scuf-audio-toggle"
 ln -sf "$INSTALL_DIR/tools/scuf-audio-toggle" /usr/local/bin/scuf-audio-toggle
 echo "  Installed to $INSTALL_DIR"
 echo "  Installed scuf-audio-toggle to /usr/local/bin/"
 
-# Step 5: Install and enable systemd service
+# Step 5: Install default config
 echo "[5/8] Installing default config..."
 CONF_DIR="/etc/scuf-envision"
 CONF_FILE="$CONF_DIR/config.ini"
@@ -75,7 +76,7 @@ systemctl daemon-reload
 systemctl enable --now scuf-envision.service
 echo "  Service installed, enabled at boot, and started"
 
-# Step 6: Install audio config
+# Step 7: Install audio config
 echo "[7/8] Installing audio config (headphone volume fix)..."
 WP_CONF_DIR="/etc/wireplumber/wireplumber.conf.d"
 OLD_DISABLE_RULE="/etc/udev/rules.d/98-scuf-no-audio.rules"
@@ -92,15 +93,19 @@ if [ -f "$OLD_DISABLE_RULE" ]; then
 fi
 echo "  Note: Restart PipeWire/WirePlumber or reboot for audio changes to take effect"
 
+# Step 8: Summary
 echo "[8/8] Audio toggle tool ready"
-echo "  To completely disable SCUF audio devices: sudo scuf-audio-toggle disable"
-echo "  To re-enable: sudo scuf-audio-toggle enable"
-echo "  To check status: sudo scuf-audio-toggle status"
+echo "  To completely disable SCUF audio devices: sudo $INSTALL_DIR/tools/scuf-audio-toggle disable"
+echo "  To re-enable: sudo $INSTALL_DIR/tools/scuf-audio-toggle enable"
+echo "  To check status: sudo $INSTALL_DIR/tools/scuf-audio-toggle status"
 
 echo ""
 echo "======================================"
 echo "Installation complete!"
 echo "======================================"
+echo ""
+echo "You can now delete the cloned repository if you wish."
+echo "Everything runs from $INSTALL_DIR and system directories."
 echo ""
 
 # Report service status
@@ -130,9 +135,12 @@ echo "  # Test with diagnostic tool:"
 echo "  sudo python3 $INSTALL_DIR/tools/diag.py"
 echo ""
 echo "  # Disable/enable SCUF headphone audio:"
-echo "  sudo scuf-audio-toggle disable"
-echo "  sudo scuf-audio-toggle enable"
-echo "  sudo scuf-audio-toggle status"
+echo "  sudo $INSTALL_DIR/tools/scuf-audio-toggle disable"
+echo "  sudo $INSTALL_DIR/tools/scuf-audio-toggle enable"
+echo "  sudo $INSTALL_DIR/tools/scuf-audio-toggle status"
+echo ""
+echo "  # Uninstall:"
+echo "  sudo bash $INSTALL_DIR/uninstall.sh"
 echo ""
 echo "Steam users: set this environment variable to prevent double input:"
 echo "  SDL_GAMECONTROLLER_IGNORE_DEVICES=0x1b1c/0x3a05,0x1b1c/0x3a08"
