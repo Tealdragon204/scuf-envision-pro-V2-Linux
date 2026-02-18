@@ -107,6 +107,7 @@ Log out and back in for this to take effect.
 
 If you don't use the controller's headphone jack at all and want to remove it from your audio device list completely:
 
+First ensure you're in the correct directory
 ```bash
 sudo /opt/scuf-envision/tools/scuf-audio-toggle disable
 ```
