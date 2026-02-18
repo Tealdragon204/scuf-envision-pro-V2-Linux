@@ -110,12 +110,13 @@ sudo udevadm control --reload-rules
 # Then reboot or restart PipeWire/WirePlumber
 ```
 
-### Step 6: Disable SCUF Audio Entirely (Optional)
+### Step 6: Disable SCUF Audio Entirely (Optional) 
 
 If you don't use the controller's headphone jack at all and want to remove it from your audio device list completely:
 
+First ensure you're in the correct directory
 ```bash
-sudo scuf-audio-toggle disable
+sudo tools/scuf-audio-toggle disable
 ```
 
 This unbinds the SCUF USB audio interface from the kernel driver so PipeWire/PulseAudio won't see it. The setting persists across reboots (stored in `/etc/scuf-envision/config.ini`).
@@ -123,13 +124,13 @@ This unbinds the SCUF USB audio interface from the kernel driver so PipeWire/Pul
 To re-enable:
 
 ```bash
-sudo scuf-audio-toggle enable
+sudo tools/scuf-audio-toggle enable
 ```
 
 To check current state:
 
 ```bash
-sudo scuf-audio-toggle status
+sudo tools/scuf-audio-toggle status
 ```
 
 ---
