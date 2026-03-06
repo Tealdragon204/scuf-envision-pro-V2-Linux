@@ -150,6 +150,11 @@ sudo /opt/scuf-envision/tools/scuf-audio-toggle status
 
 Rumble is **enabled by default**. Games that send force-feedback events (most Steam games, `fftest`, etc.) will vibrate the controller's left (strong) and right (weak) motors automatically.
 
+**Features:**
+- **FF_RUMBLE** — standard Linux force-feedback rumble with separate strong/weak motors
+- **FF_GAIN** — games can set a global rumble intensity multiplier (common in Wine/Proton titles); the driver scales all rumble output accordingly
+- **Hardware motor initialization** — on startup, the driver sets both vibration motors to 100% hardware intensity (equivalent to iCUE's vibration slider on Windows), ensuring you get full-strength rumble regardless of previous iCUE settings
+
 **Test rumble manually:**
 
 ```bash
@@ -247,7 +252,7 @@ The uninstall script is installed alongside the driver. You do **not** need the 
 sudo bash /opt/scuf-envision/uninstall.sh
 ```
 
-This removes the service, udev rules, audio configs, CLI tool, and installed files. If you had SCUF audio disabled, it re-enables it before removal. Does not remove `python-evdev`, the `uinput` module, or `/etc/scuf-envision/` (your config is preserved).
+This removes the service, udev rules, audio configs, CLI tool, installed files, config directory, and uinput auto-load. If you had SCUF audio disabled, it re-enables it before removal. Does not remove the `python-evdev` package (other software may use it) or the `uinput` kernel module itself.
 
 Then **reboot** (or log out and back in) to ensure all changes take effect.
 
@@ -308,7 +313,17 @@ rm -f ~/.config/environment.d/scuf.conf
 
 Log out and back in for this change to take effect.
 
-**Step 8: Remove the python-evdev package (optional)**
+**Step 8: Remove the cloned repository (if still present)**
+
+After installation, the driver runs from `/opt/scuf-envision`. The git clone is no longer needed:
+
+```bash
+rm -rf ~/scuf-envision-pro-V2-Linux
+```
+
+> **Note:** If you cloned to a different location, remove it from there instead.
+
+**Step 9: Remove the python-evdev package (optional)**
 
 This is optional because `python-evdev` is a common package that other software may depend on.
 
@@ -360,6 +375,9 @@ sudo rm -f /etc/modules-load.d/uinput.conf
 # Remove SDL ignore variable
 rm -f ~/.config/environment.d/scuf.conf
 
+# Remove cloned repository (if still present)
+rm -rf ~/scuf-envision-pro-V2-Linux
+
 echo "All SCUF driver components removed."
 ```
 
@@ -368,9 +386,9 @@ After this, **reboot** to ensure all changes take effect. Your controller will g
 ### What the Uninstall Does NOT Change
 
 For safety, the uninstall process does **not** touch these:
-- **python-evdev package** - other software may use it; remove manually if you want (see Step 8)
-- **uinput kernel module** - it's a standard Linux module; removing the auto-load config just prevents it from loading on boot, it doesn't uninstall it
-- **Your Steam library or game configs** - no game settings are modified by this driver
+- **python-evdev package** — other software may use it; remove manually if you want (see Step 9)
+- **uinput kernel module** — it's a standard Linux module; removing the auto-load config just prevents it from loading on boot, it doesn't uninstall it
+- **Your Steam library or game configs** — no game settings are modified by this driver
 
 ---
 
