@@ -1,6 +1,6 @@
 # SCUF Envision Pro V2 - Linux Driver
 
-A userspace driver that makes the SCUF Envision Pro V2 controller work correctly on Linux with proper Xbox button mapping.
+A userspace driver that makes the SCUF Envision Pro V2 controller work correctly on Linux with proper Xbox button mapping and rumble/force-feedback support.
 
 **Tested on:** Garuda Linux (Arch-based) with KDE Plasma
 
@@ -29,9 +29,11 @@ Physical SCUF Controller (broken mapping)
         |
         v
   Virtual Xbox Gamepad (via uinput)
-        |
-        v
-  Games & Steam see a normal Xbox controller
+        |                          ^
+        v                          |
+  Games & Steam            Rumble/Force Feedback
+  see a normal             Game -> FF_RUMBLE -> hidraw
+  Xbox controller          -> controller motors vibrate
 ```
 
 ---
@@ -102,6 +104,47 @@ Log out and back in for this to take effect.
 1. Open Steam -> Settings -> Controller -> General Controller Settings
 2. Find the SCUF Envision Pro entry (if listed) and disable it
 3. The virtual "SCUF Envision Pro V2 (Xbox Mode)" controller should be listed as an Xbox controller
+
+### Rumble / Force Feedback
+
+Rumble is **enabled by default**. Games that send force-feedback events (most Steam games, `fftest`, etc.) will vibrate the controller's left (strong) and right (weak) motors automatically.
+
+**Test rumble manually:**
+
+```bash
+# Install the test tool (if not already installed)
+# Arch/Garuda: sudo pacman -S linuxconsole
+# Ubuntu/Debian: sudo apt install joystick
+
+# Find the virtual gamepad's event device
+cat /proc/bus/input/devices | grep -A4 "SCUF Envision Pro V2 (Xbox Mode)"
+# Look for the "Handlers" line — note the eventN number
+
+# Run the force-feedback test
+sudo fftest /dev/input/eventN
+# Follow the prompts to upload and play a rumble effect
+# You should feel the controller vibrate
+```
+
+**Verify rumble in service logs:**
+
+```bash
+journalctl -u scuf-envision.service -e | grep -i rumble
+# Should show: "Rumble enabled (hidraw: /dev/hidrawN)"
+```
+
+**Disable rumble** (if you don't want vibration):
+
+Edit `/etc/scuf-envision/config.ini`:
+```ini
+[rumble]
+disabled = true
+```
+Then restart the service:
+```bash
+sudo systemctl restart scuf-envision
+```
+When disabled, the virtual gamepad won't advertise force-feedback capability, so games will never send rumble events.
 
 ### Disable SCUF Audio Entirely (Optional)
 
@@ -523,6 +566,7 @@ scuf-envision-pro-V2-Linux/
     bridge.py                 # Core event loop (read -> remap -> emit)
     input_filter.py           # Radial deadzone, jitter suppression
     virtual_gamepad.py        # Virtual Xbox controller via uinput
+    rumble.py                 # Force-feedback: translates FF events to HID rumble packets
     config.py                 # Config file loading/saving (/etc/scuf-envision/config.ini)
     audio_control.py          # USB audio unbind/rebind via sysfs
   tools/
