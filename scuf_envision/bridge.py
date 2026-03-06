@@ -251,13 +251,15 @@ class BridgeService:
                 elif event.type == ecodes.EV_FF:
                     if event.code == ecodes.FF_GAIN:
                         self._ff_gain = max(0, min(65535, event.value))
-                        log.debug("FF_GAIN set to %d", self._ff_gain)
+                        log.info("FF_GAIN set to %d (%.0f%%)", self._ff_gain, self._ff_gain / 65535 * 100)
                     else:
                         eff = self._ff_effects.get(event.code)
                         if eff and self._rumble:
                             if event.value > 0:
                                 strong = eff[0] * self._ff_gain // 65535
                                 weak = eff[1] * self._ff_gain // 65535
+                                log.info("Rumble play: raw=%d/%d gain=%d scaled=%d/%d",
+                                         eff[0], eff[1], self._ff_gain, strong, weak)
                                 self._rumble.set_motors(strong, weak)
                             else:
                                 self._rumble.stop()
