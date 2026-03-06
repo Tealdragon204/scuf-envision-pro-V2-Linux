@@ -45,6 +45,7 @@ class BridgeService:
         self._rumble_enabled = rumble_enabled
         self._rumble = None  # RumbleHandler, created in start()
         self._ff_effects = {}  # id -> (strong_magnitude, weak_magnitude)
+        self._ff_gain = 65535  # FF_GAIN: global rumble intensity (0-65535)
 
         self._physical = None
         self._grabbed_devices = []
@@ -66,7 +67,9 @@ class BridgeService:
         try:
             self.gamepad.create(rumble=self._rumble_enabled)
             if self._rumble_enabled and self.discovered.hidraw_path:
-                from .rumble import RumbleHandler
+                from .rumble import RumbleHandler, init_vibration_modules
+                if self.discovered.control_hidraw_path:
+                    init_vibration_modules(self.discovered.control_hidraw_path)
                 self._rumble = RumbleHandler(self.discovered.hidraw_path)
             self._open_devices()
             log.info("Bridge started - SCUF -> Xbox translation active")
@@ -246,12 +249,18 @@ class BridgeService:
                         erase.retval = 0
                         ui.end_erase(erase)
                 elif event.type == ecodes.EV_FF:
-                    eff = self._ff_effects.get(event.code)
-                    if eff and self._rumble:
-                        if event.value > 0:
-                            self._rumble.set_motors(eff[0], eff[1])
-                        else:
-                            self._rumble.stop()
+                    if event.code == ecodes.FF_GAIN:
+                        self._ff_gain = max(0, min(65535, event.value))
+                        log.debug("FF_GAIN set to %d", self._ff_gain)
+                    else:
+                        eff = self._ff_effects.get(event.code)
+                        if eff and self._rumble:
+                            if event.value > 0:
+                                strong = eff[0] * self._ff_gain // 65535
+                                weak = eff[1] * self._ff_gain // 65535
+                                self._rumble.set_motors(strong, weak)
+                            else:
+                                self._rumble.stop()
         except OSError as e:
             log.debug("FF read error (non-fatal): %s", e)
 
@@ -310,9 +319,11 @@ class BridgeService:
                         pass
                     # Re-open hidraw for rumble on reconnection
                     if self._rumble_enabled and discovered.hidraw_path:
-                        from .rumble import RumbleHandler
+                        from .rumble import RumbleHandler, init_vibration_modules
                         if self._rumble:
                             self._rumble.close()
+                        if discovered.control_hidraw_path:
+                            init_vibration_modules(discovered.control_hidraw_path)
                         self._rumble = RumbleHandler(discovered.hidraw_path)
                     return True
                 except OSError as e:

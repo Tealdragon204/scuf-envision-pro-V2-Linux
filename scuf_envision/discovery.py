@@ -30,10 +30,12 @@ class DiscoveredDevice:
     """Represents a discovered SCUF controller with its device paths."""
 
     def __init__(self, event_path: str, hidraw_path: Optional[str] = None,
+                 control_hidraw_path: Optional[str] = None,
                  secondary_event_paths: Optional[list] = None,
                  connection_type: str = "wired"):
         self.event_path = event_path
         self.hidraw_path = hidraw_path
+        self.control_hidraw_path = control_hidraw_path
         self.secondary_event_paths = secondary_event_paths or []
         self.connection_type = connection_type
 
@@ -218,8 +220,9 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
         secondary = [e for e, _, _, _, _ in matching_events[1:]]
         log.warning(f"Primary gamepad (fallback, first device): {primary}")
 
-    # Find hidraw device for the gamepad interface
+    # Find hidraw devices: gamepad interface (3) for rumble, control interface for config
     hidraw_path = _find_hidraw_for_gamepad(primary)
+    control_hidraw_path = _find_control_hidraw(hidraw_path)
 
     # Determine connection type from the matched PID
     conn_type = "wired"
@@ -233,11 +236,14 @@ def discover_scuf() -> Optional[DiscoveredDevice]:
         log.info(f"Secondary inputs: {secondary}")
     if hidraw_path:
         log.info(f"HID raw device: {hidraw_path}")
+    if control_hidraw_path:
+        log.info(f"Control HID raw device: {control_hidraw_path}")
     log.info(f"Connection type: {conn_type}")
 
     return DiscoveredDevice(
         event_path=primary,
         hidraw_path=hidraw_path,
+        control_hidraw_path=control_hidraw_path,
         secondary_event_paths=secondary,
         connection_type=conn_type,
     )
@@ -321,3 +327,31 @@ def _find_hidraw_for_gamepad(event_path: str) -> Optional[str]:
 
     # Fallback: return the first VID:PID match
     return first_match
+
+
+def _find_control_hidraw(gamepad_hidraw: Optional[str]) -> Optional[str]:
+    """
+    Find the control hidraw device for sending configuration commands
+    (vibration module intensity, etc.).
+
+    This is the first VID:PID-matching hidraw that is NOT the gamepad
+    interface hidraw. OpenLinkHub uses the first enumerated HID device
+    for control commands.
+    """
+    for hidraw_dir in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        uevent_path = os.path.join(hidraw_dir, "device", "uevent")
+        uevent = _read_sysfs(uevent_path)
+        for line in uevent.splitlines():
+            if line.startswith("HID_ID="):
+                parts = line.split("=", 1)[1].split(":")
+                if len(parts) >= 3:
+                    try:
+                        vid = int(parts[1], 16)
+                        pid = int(parts[2], 16)
+                    except ValueError:
+                        continue
+                    if vid == SCUF_VENDOR_ID and pid in (SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER):
+                        dev_path = f"/dev/{os.path.basename(hidraw_dir)}"
+                        if os.path.exists(dev_path) and dev_path != gamepad_hidraw:
+                            return dev_path
+    return None
