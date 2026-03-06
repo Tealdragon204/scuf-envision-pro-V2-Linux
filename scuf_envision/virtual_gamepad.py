@@ -55,7 +55,7 @@ class VirtualGamepad:
             vendor=VIRTUAL_VENDOR,
             product=VIRTUAL_PRODUCT,
             version=VIRTUAL_VERSION,
-            ff_effects_max=ff_effects_max,
+            max_effects=ff_effects_max,
         )
 
         log.info(f"Created virtual gamepad: {self._device.device.path}"
