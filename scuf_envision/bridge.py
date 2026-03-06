@@ -233,9 +233,10 @@ class BridgeService:
                         upload = ui.begin_upload(event.value)
                         effect = upload.effect
                         if effect.type == ecodes.FF_RUMBLE:
+                            rumble = effect.u.ff_rumble_effect
                             self._ff_effects[effect.id] = (
-                                effect.u.rumble.strong_magnitude,
-                                effect.u.rumble.weak_magnitude,
+                                rumble.strong_magnitude,
+                                rumble.weak_magnitude,
                             )
                         upload.retval = 0
                         ui.end_upload(upload)
