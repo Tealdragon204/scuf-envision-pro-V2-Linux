@@ -241,6 +241,11 @@ class BridgeService:
                                 rumble.strong_magnitude,
                                 rumble.weak_magnitude,
                             )
+                            log.info("FF upload id=%d: strong=%d weak=%d",
+                                     effect.id, rumble.strong_magnitude, rumble.weak_magnitude)
+                        else:
+                            log.info("FF upload id=%d: non-rumble type=%d (ignored)",
+                                     effect.id, effect.type)
                         upload.retval = 0
                         ui.end_upload(upload)
                     elif event.code == ecodes.UI_FF_ERASE:
@@ -262,6 +267,7 @@ class BridgeService:
                                          eff[0], eff[1], self._ff_gain, strong, weak)
                                 self._rumble.set_motors(strong, weak)
                             else:
+                                log.info("Rumble stop: effect id=%d", event.code)
                                 self._rumble.stop()
         except OSError as e:
             log.debug("FF read error (non-fatal): %s", e)
