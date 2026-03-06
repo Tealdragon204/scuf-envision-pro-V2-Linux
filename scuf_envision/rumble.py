@@ -10,7 +10,11 @@ Protocol confirmed via OpenLinkHub (Go) and Wireshark USB capture on Windows.
 import logging
 import os
 
-from .constants import RUMBLE_REPORT, RUMBLE_LEFT_OFFSET, RUMBLE_RIGHT_OFFSET
+from .constants import (
+    RUMBLE_REPORT, RUMBLE_LEFT_OFFSET, RUMBLE_RIGHT_OFFSET,
+    VIBRATION_LEFT_CMD, VIBRATION_RIGHT_CMD, VIBRATION_MAX_INTENSITY,
+    VIBRATION_TRANSFER_HEADER, VIBRATION_TRANSFER_SIZE,
+)
 
 log = logging.getLogger(__name__)
 
@@ -71,3 +75,37 @@ class RumbleHandler:
                 pass
             self._fd = None
             log.info("Closed hidraw rumble device")
+
+
+def init_vibration_modules(control_hidraw_path: str):
+    """Set both vibration motors to max hardware intensity (100%).
+
+    Sends the 0x84 (left) and 0x85 (right) commands via the control
+    hidraw device. This is equivalent to iCUE's vibration intensity
+    slider on Windows. Without this, the controller may use a stale
+    lower intensity from a previous configuration session.
+
+    Args:
+        control_hidraw_path: Path to the control hidraw device (not interface 3).
+    """
+    try:
+        fd = os.open(control_hidraw_path, os.O_RDWR)
+    except OSError as e:
+        log.warning("Failed to open control hidraw %s: %s", control_hidraw_path, e)
+        return
+
+    try:
+        for cmd in (VIBRATION_LEFT_CMD, VIBRATION_RIGHT_CMD):
+            buf = bytearray(VIBRATION_TRANSFER_SIZE)
+            buf[:len(VIBRATION_TRANSFER_HEADER)] = VIBRATION_TRANSFER_HEADER
+            buf[len(VIBRATION_TRANSFER_HEADER)] = cmd
+            buf[len(VIBRATION_TRANSFER_HEADER) + 1] = 0x00
+            buf[len(VIBRATION_TRANSFER_HEADER) + 2] = VIBRATION_MAX_INTENSITY
+            try:
+                os.write(fd, bytes(buf))
+                os.read(fd, 64)
+            except OSError as e:
+                log.warning("Vibration module init cmd 0x%02x failed: %s", cmd, e)
+        log.info("Vibration modules set to %d%% intensity", VIBRATION_MAX_INTENSITY)
+    finally:
+        os.close(fd)

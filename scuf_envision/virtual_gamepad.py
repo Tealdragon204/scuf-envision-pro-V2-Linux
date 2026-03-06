@@ -46,7 +46,7 @@ class VirtualGamepad:
 
         ff_effects_max = 0
         if rumble:
-            capabilities[ecodes.EV_FF] = [ecodes.FF_RUMBLE]
+            capabilities[ecodes.EV_FF] = [ecodes.FF_RUMBLE, ecodes.FF_GAIN]
             ff_effects_max = FF_MAX_EFFECTS
 
         self._device = UInput(

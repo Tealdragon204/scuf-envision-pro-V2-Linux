@@ -100,6 +100,16 @@ RUMBLE_LEFT_OFFSET = 8
 RUMBLE_RIGHT_OFFSET = 9
 FF_MAX_EFFECTS = 16  # max concurrent force-feedback effects
 
+# --- Vibration module HID commands ---
+# Sent via the transfer protocol to set hardware motor intensity (0-100).
+# Equivalent to iCUE's vibration intensity slider on Windows.
+# Protocol: 65-byte buffer with header [0x00, 0x02, 0x08, 0x01] + payload.
+VIBRATION_LEFT_CMD = 0x84
+VIBRATION_RIGHT_CMD = 0x85
+VIBRATION_MAX_INTENSITY = 100
+VIBRATION_TRANSFER_HEADER = bytearray([0x00, 0x02, 0x08, 0x01])
+VIBRATION_TRANSFER_SIZE = 65
+
 # --- Polling ---
 POLL_TIMEOUT_MS = 4  # ~250 Hz polling rate
 
