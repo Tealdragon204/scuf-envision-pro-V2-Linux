@@ -6,3 +6,11 @@
 # To toggle at runtime:  sudo scuf-audio-toggle disable|enable
 # To apply after editing: sudo systemctl restart scuf-envision
 disabled = false
+
+[rumble]
+# Set to true to disable force-feedback / rumble support.
+# When disabled the virtual gamepad will not advertise FF capability,
+# so games will never send rumble events.
+#
+# To apply after editing: sudo systemctl restart scuf-envision
+disabled = false

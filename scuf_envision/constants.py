@@ -86,6 +86,20 @@ VIRTUAL_VENDOR = 0x045E   # Microsoft (so games recognize it as Xbox)
 VIRTUAL_PRODUCT = 0x0B13  # Xbox Wireless Controller (matches Xbox Elite 2)
 VIRTUAL_VERSION = 0x0001
 
+# --- Rumble HID protocol ---
+# 13-byte HID output report to control rumble motors.
+# Confirmed via OpenLinkHub (Go) and Wireshark USB capture on Windows.
+# Written to the hidraw device on USB interface 3.
+RUMBLE_REPORT = bytearray([
+    0x09, 0x00, 0x6a, 0x09, 0x00, 0x03, 0x00, 0x00,
+    0x00,  # byte 8: left (strong) motor, 0x00-0xFF
+    0x00,  # byte 9: right (weak) motor, 0x00-0xFF
+    0x10, 0x00, 0xeb,
+])
+RUMBLE_LEFT_OFFSET = 8
+RUMBLE_RIGHT_OFFSET = 9
+FF_MAX_EFFECTS = 16  # max concurrent force-feedback effects
+
 # --- Polling ---
 POLL_TIMEOUT_MS = 4  # ~250 Hz polling rate
 

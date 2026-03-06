@@ -1,12 +1,40 @@
 # SCUF Envision Pro V2 — Rumble Feature Feasibility Research
 
-## Context
+## Status: IMPLEMENTED
 
-The SCUF Envision Pro V2 Linux driver is a Python userspace bridge (`python-evdev` + `uinput`) that remaps the controller's non-standard HID inputs to Xbox-standard codes. It currently handles buttons, sticks, triggers, d-pad, and USB audio — but has **no rumble/force feedback support**. This document assesses feasibility and outlines the path to implementation.
+Rumble support has been implemented. The HID protocol was confirmed via two
+independent sources (see "Confirmed Protocol" below). This document is kept
+for historical reference.
 
 ---
 
-## Feasibility Verdict: Yes, Rumble Is Possible
+## Confirmed Protocol
+
+The rumble command is a **13-byte HID output report** written to the controller's
+hidraw device (USB interface 3, the gamepad interface):
+
+```
+Offset: 0     1     2     3     4     5     6     7     8     9     10    11    12
+Bytes:  0x09  0x00  0x6a  0x09  0x00  0x03  0x00  0x00  LEFT  RIGHT 0x10  0x00  0xeb
+```
+
+- **Byte 8 (LEFT)**: Left / strong motor intensity, `0x00`–`0xFF`
+- **Byte 9 (RIGHT)**: Right / weak motor intensity, `0x00`–`0xFF`
+- All other bytes are fixed framing.
+
+### Sources
+
+1. **OpenLinkHub** (Go, GPL-3.0): `src/devices/scufenvisionproV2WU/scufenvisionproV2WU.go`
+   — `TriggerHapticEngineExternal()` writes the same 13-byte report via `analogListener.Write(buf)`.
+   Repository: https://github.com/jurkovic-nikola/OpenLinkHub
+
+2. **Wireshark USB capture** (user-provided, Windows wireless dongle):
+   HID Data bytes end with `09 00 6a 09 00 03 00 00 ... 10 00 eb`, matching
+   the OpenLinkHub packet exactly.
+
+---
+
+## Original Feasibility Assessment
 
 | Component | Feasible? | Confidence | Notes |
 |-----------|-----------|------------|-------|
@@ -14,10 +42,10 @@ The SCUF Envision Pro V2 Linux driver is a Python userspace bridge (`python-evde
 | Virtual gamepad FF registration | Yes | High | Just add `EV_FF` capability to existing UInput creation |
 | Receiving FF events from games | Yes | High | Poll UInput fd alongside physical device fd |
 | Sending commands to hardware | Yes | High | `hidraw` path already discovered, just need to `open()` + `write()` |
-| **HID rumble protocol** | **Unknown** | **Medium** | Requires reverse engineering — the only real blocker |
+| **HID rumble protocol** | **Confirmed** | **High** | 13-byte output report — see above |
 | Enable/disable toggle | Yes | High | Mirrors existing audio config pattern exactly |
 
-**Bottom line**: The entire software pipeline exists and is proven. The single unknown is what bytes to write to the SCUF's hidraw device to control the rumble motors.
+**Bottom line**: Fully implemented. Games send `FF_RUMBLE` → bridge receives it → translates to 13-byte HID packet → writes to hidraw → motors vibrate.
 
 ---
 

@@ -37,11 +37,14 @@ class BridgeService:
     """Bridges the physical SCUF controller to a virtual Xbox gamepad."""
 
     def __init__(self, discovered: DiscoveredDevice, filter_config: dict = None,
-                 reconnect: bool = False):
+                 reconnect: bool = False, rumble_enabled: bool = False):
         self.discovered = discovered
         self.filter = InputFilter(**(filter_config or {}))
         self.gamepad = VirtualGamepad()
         self._reconnect = reconnect
+        self._rumble_enabled = rumble_enabled
+        self._rumble = None  # RumbleHandler, created in start()
+        self._ff_effects = {}  # id -> (strong_magnitude, weak_magnitude)
 
         self._physical = None
         self._grabbed_devices = []
@@ -61,7 +64,10 @@ class BridgeService:
 
         self._running = True
         try:
-            self.gamepad.create()
+            self.gamepad.create(rumble=self._rumble_enabled)
+            if self._rumble_enabled and self.discovered.hidraw_path:
+                from .rumble import RumbleHandler
+                self._rumble = RumbleHandler(self.discovered.hidraw_path)
             self._open_devices()
             log.info("Bridge started - SCUF -> Xbox translation active")
             self._run_with_reconnect()
@@ -106,22 +112,31 @@ class BridgeService:
 
     def _event_loop(self):
         """Main polling loop at ~250 Hz."""
-        fd = self._physical.fd
+        phys_fd = self._physical.fd
         poll = select.poll()
-        poll.register(fd, select.POLLIN)
+        poll.register(phys_fd, select.POLLIN)
+
+        # Also poll the virtual gamepad's fd for FF upload/erase/play events
+        vgpad_fd = self.gamepad.fd if self._rumble else -1
+        if vgpad_fd >= 0:
+            poll.register(vgpad_fd, select.POLLIN)
 
         while self._running:
             events = poll.poll(POLL_TIMEOUT_MS)
             if not events:
                 continue
 
-            try:
-                for event in self._physical.read():
-                    self._handle_event(event)
-            except OSError as e:
-                if self._running:
-                    log.error(f"Device read error: {e}")
-                    raise _DeviceDisconnected() from e
+            for ready_fd, _ in events:
+                if ready_fd == phys_fd:
+                    try:
+                        for event in self._physical.read():
+                            self._handle_event(event)
+                    except OSError as e:
+                        if self._running:
+                            log.error(f"Device read error: {e}")
+                            raise _DeviceDisconnected() from e
+                elif ready_fd == vgpad_fd:
+                    self._handle_ff_events()
 
     def _handle_event(self, event):
         """Process a single evdev event from the physical controller."""
@@ -208,6 +223,37 @@ class BridgeService:
         self.gamepad.emit_axis(mapped, value)
         self.gamepad.syn()
 
+    def _handle_ff_events(self):
+        """Handle force-feedback events from games via the virtual gamepad."""
+        ui = self.gamepad.uinput
+        try:
+            for event in ui.read():
+                if event.type == ecodes.EV_UINPUT:
+                    if event.code == ecodes.UI_FF_UPLOAD:
+                        upload = ui.begin_upload(event.value)
+                        effect = upload.effect
+                        if effect.type == ecodes.FF_RUMBLE:
+                            self._ff_effects[effect.id] = (
+                                effect.u.rumble.strong_magnitude,
+                                effect.u.rumble.weak_magnitude,
+                            )
+                        upload.retval = 0
+                        ui.end_upload(upload)
+                    elif event.code == ecodes.UI_FF_ERASE:
+                        erase = ui.begin_erase(event.value)
+                        self._ff_effects.pop(erase.effect_id, None)
+                        erase.retval = 0
+                        ui.end_erase(erase)
+                elif event.type == ecodes.EV_FF:
+                    eff = self._ff_effects.get(event.code)
+                    if eff and self._rumble:
+                        if event.value > 0:
+                            self._rumble.set_motors(eff[0], eff[1])
+                        else:
+                            self._rumble.stop()
+        except OSError as e:
+            log.debug("FF read error (non-fatal): %s", e)
+
     def _emit_filtered_stick(self, stick_name: str, raw_x: int, raw_y: int,
                               out_x_code: int, out_y_code: int):
         """Apply radial deadzone and emit filtered stick values."""
@@ -233,7 +279,9 @@ class BridgeService:
         self._physical = None
 
     def _zero_virtual_outputs(self):
-        """Zero all stick/trigger axes to prevent stuck inputs on disconnect."""
+        """Zero all stick/trigger axes and stop rumble on disconnect."""
+        if self._rumble:
+            self._rumble.stop()
         for axis in (ecodes.ABS_X, ecodes.ABS_Y, ecodes.ABS_RX, ecodes.ABS_RY,
                      ecodes.ABS_Z, ecodes.ABS_RZ):
             self.gamepad.emit_axis(axis, 0)
@@ -259,6 +307,12 @@ class BridgeService:
                         apply_audio_config()
                     except Exception:
                         pass
+                    # Re-open hidraw for rumble on reconnection
+                    if self._rumble_enabled and discovered.hidraw_path:
+                        from .rumble import RumbleHandler
+                        if self._rumble:
+                            self._rumble.close()
+                        self._rumble = RumbleHandler(discovered.hidraw_path)
                     return True
                 except OSError as e:
                     log.warning(f"Device found but failed to open: {e}")
@@ -273,8 +327,11 @@ class BridgeService:
         self._running = False
 
     def _cleanup(self):
-        """Release all grabbed devices and destroy the virtual gamepad."""
+        """Release all grabbed devices, close rumble, and destroy the virtual gamepad."""
         log.info("Cleaning up...")
+        if self._rumble:
+            self._rumble.close()
+            self._rumble = None
         self._release_physical()
         self.gamepad.close()
         log.info("Cleanup complete")
@@ -307,10 +364,21 @@ def run():
     except Exception as e:
         log.warning(f"Could not apply audio config: {e}")
 
+    # Rumble config
+    from .config import is_rumble_disabled
+    rumble_enabled = not is_rumble_disabled()
+    if rumble_enabled and discovered.hidraw_path:
+        log.info("Rumble enabled (hidraw: %s)", discovered.hidraw_path)
+    elif rumble_enabled:
+        log.warning("Rumble enabled in config but no hidraw device found — rumble unavailable")
+        rumble_enabled = False
+    else:
+        log.info("Rumble disabled by config")
+
     # Enable reconnection for wireless connections
     reconnect = (discovered.connection_type == "wireless")
     if reconnect:
         log.info("Wireless mode: reconnection on disconnect is enabled")
 
-    bridge = BridgeService(discovered, reconnect=reconnect)
+    bridge = BridgeService(discovered, reconnect=reconnect, rumble_enabled=rumble_enabled)
     bridge.start()

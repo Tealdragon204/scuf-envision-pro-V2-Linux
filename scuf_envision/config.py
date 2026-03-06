@@ -17,6 +17,9 @@ DEFAULTS = {
     "audio": {
         "disabled": "false",
     },
+    "rumble": {
+        "disabled": "false",
+    },
 }
 
 
@@ -59,3 +62,9 @@ def set_audio_disabled(disabled):
         config["audio"] = {}
     config["audio"]["disabled"] = str(disabled).lower()
     save_config(config)
+
+
+def is_rumble_disabled():
+    """Return True if rumble.disabled is set to true in config."""
+    config = load_config()
+    return config.getboolean("rumble", "disabled", fallback=False)
