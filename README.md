@@ -83,6 +83,24 @@ A reboot ensures the audio fix, udev rules, and systemd service all take effect 
 
 ## Post-Install Setup
 
+### Verify the Controller Works
+
+The driver runs automatically as a systemd service. Verify it's working before configuring anything else:
+
+```bash
+# Check the service is running
+sudo systemctl status scuf-envision.service
+
+# You should see the virtual Xbox controller listed
+cat /proc/bus/input/devices | grep -A5 "SCUF Envision Pro V2 (Xbox Mode)"
+
+# Or test with evtest (install: sudo pacman -S evtest)
+sudo evtest
+# Select the "SCUF Envision Pro V2 (Xbox Mode)" device
+```
+
+Press buttons and move sticks — you should see correct Xbox-mapped events. If the controller isn't detected, see [Troubleshooting](#troubleshooting) below.
+
 ### Steam Configuration
 
 Steam's built-in controller support may try to read the raw SCUF device (with broken mappings) alongside our virtual Xbox controller, causing double-input or conflicting mappings.
@@ -104,6 +122,29 @@ Log out and back in for this to take effect.
 1. Open Steam -> Settings -> Controller -> General Controller Settings
 2. Find the SCUF Envision Pro entry (if listed) and disable it
 3. The virtual "SCUF Envision Pro V2 (Xbox Mode)" controller should be listed as an Xbox controller
+
+### Disable SCUF Audio Entirely (Optional)
+
+If you don't use the controller's headphone jack at all and want to remove it from your audio device list completely:
+
+```bash
+sudo /opt/scuf-envision/tools/scuf-audio-toggle disable
+```
+
+This unbinds the SCUF USB audio interface from the kernel driver so PipeWire/PulseAudio won't see it. The setting persists across reboots (stored in `/etc/scuf-envision/config.ini`).
+
+To re-enable:
+
+```bash
+sudo /opt/scuf-envision/tools/scuf-audio-toggle enable
+```
+Then disconnect and reconnect the controller, audio should then re-enable
+
+To check current state:
+
+```bash
+sudo /opt/scuf-envision/tools/scuf-audio-toggle status
+```
 
 ### Rumble / Force Feedback
 
@@ -146,49 +187,9 @@ sudo systemctl restart scuf-envision
 ```
 When disabled, the virtual gamepad won't advertise force-feedback capability, so games will never send rumble events.
 
-### Disable SCUF Audio Entirely (Optional)
-
-If you don't use the controller's headphone jack at all and want to remove it from your audio device list completely:
-
-First ensure you're in the correct directory
-```bash
-sudo /opt/scuf-envision/tools/scuf-audio-toggle disable
-```
-
-This unbinds the SCUF USB audio interface from the kernel driver so PipeWire/PulseAudio won't see it. The setting persists across reboots (stored in `/etc/scuf-envision/config.ini`).
-
-To re-enable:
-
-```bash
-sudo /opt/scuf-envision/tools/scuf-audio-toggle enable
-```
-Then disconnect and reconnect the controller, audio should then re-enable
-
-To check current state:
-
-```bash
-sudo /opt/scuf-envision/tools/scuf-audio-toggle status
-```
-
 ---
 
 ## Usage
-
-### Verify It's Working
-
-The driver runs automatically as a systemd service. To verify:
-
-```bash
-# Check the service is running
-sudo systemctl status scuf-envision.service
-
-# You should see the virtual Xbox controller listed
-cat /proc/bus/input/devices | grep -A5 "SCUF Envision Pro V2 (Xbox Mode)"
-
-# Or test with evtest (install: sudo pacman -S evtest)
-sudo evtest
-# Select the "SCUF Envision Pro V2 (Xbox Mode)" device
-```
 
 ### Service Logs
 
