@@ -162,12 +162,9 @@ Rumble is **enabled by default**. Games that send force-feedback events (most St
 # Arch/Garuda: sudo pacman -S linuxconsole
 # Ubuntu/Debian: sudo apt install joystick
 
-# Find the virtual gamepad's event device
-cat /proc/bus/input/devices | grep -A4 "SCUF Envision Pro V2 (Xbox Mode)"
-# Look for the "Handlers" line — note the eventN number
-
-# Run the force-feedback test
-sudo fftest /dev/input/eventN
+# Auto-detect and run fftest on the virtual gamepad
+sudo fftest "$(grep -l 'SCUF Envision Pro V2 (Xbox Mode)' /sys/class/input/event*/device/name \
+  | head -1 | sed 's|/sys/class/input/\(event[0-9]*\)/.*|/dev/input/\1|')"
 # Follow the prompts to upload and play a rumble effect
 # You should feel the controller vibrate
 ```
