@@ -163,10 +163,15 @@ Rumble is **enabled by default**. Games that send force-feedback events (most St
 # Ubuntu/Debian: sudo apt install joystick
 
 # Auto-detect and run fftest on the virtual gamepad
-sudo fftest "$(grep -l 'SCUF Envision Pro V2 (Xbox Mode)' /sys/class/input/event*/device/name \
-  | head -1 | sed 's|/sys/class/input/\(event[0-9]*\)/.*|/dev/input/\1|')"
-# Follow the prompts to upload and play a rumble effect
-# You should feel the controller vibrate
+SCUF_DEV=$(cat /sys/class/input/event*/device/name 2>/dev/null \
+  | grep -n 'SCUF Envision Pro V2 (Xbox Mode)' \
+  | head -1 | cut -d: -f1)
+if [ -n "$SCUF_DEV" ]; then
+  EVENT=$(ls -d /sys/class/input/event* | sed -n "${SCUF_DEV}p" | xargs basename)
+  sudo fftest "/dev/input/$EVENT"
+else
+  echo "Virtual gamepad not found. Is the scuf-envision service running?"
+fi
 ```
 
 **Verify rumble in service logs:**
