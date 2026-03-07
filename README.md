@@ -177,9 +177,9 @@ Fish:
 ```fish
 # Auto-detect and run fftest on the virtual gamepad
 for f in /sys/class/input/event*/device/name
-    if cat "$f" 2>/dev/null | grep -q 'SCUF Envision Pro V2 (Xbox Mode)'
-        set EVENT (echo "$f" | grep -o 'event[0-9]*')
-        sudo fftest "/dev/input/$EVENT"
+    if string match -q '*SCUF Envision Pro V2 (Xbox Mode)*' (cat $f 2>/dev/null)
+        set EVENT (string match -r 'event[0-9]+' $f)
+        sudo fftest /dev/input/$EVENT
         break
     end
 end
