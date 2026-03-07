@@ -619,6 +619,9 @@ Mapping data verified against:
 - [Scufpad](https://github.com/ChaseDRedmon/Scufpad) (C#/.NET) by ChaseDRedmon
 - [cacique-envision-pro-linux](https://github.com/Gicotto/cacique-envision-pro-linux) (Python) by Gicotto
 
+HID/USB protocol research and hidraw rumble packet implementation informed by:
+- [OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub) by jurkovic-nikola — a comprehensive open-source Linux driver for Corsair USB devices (fans, cooling, lighting, and more). It covers far more hardware than this project needs, but its HID protocol work and device communication patterns were a valuable reference for understanding how Corsair iCUE-protocol devices talk over hidraw.
+
 ## License
 
 GPLv3 - see [LICENSE](LICENSE)
