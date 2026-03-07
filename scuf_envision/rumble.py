@@ -53,6 +53,8 @@ class RumbleHandler:
         buf[RUMBLE_LEFT_OFFSET] = left
         buf[RUMBLE_RIGHT_OFFSET] = right
 
+        log.debug("HID rumble: left=%d/255 right=%d/255 pkt=%s",
+                   left, right, buf.hex())
         try:
             os.write(self._fd, bytes(buf))
         except OSError as e:
@@ -106,6 +108,7 @@ def init_vibration_modules(control_hidraw_path: str):
                 os.read(fd, 64)
             except OSError as e:
                 log.warning("Vibration module init cmd 0x%02x failed: %s", cmd, e)
-        log.info("Vibration modules set to %d%% intensity", VIBRATION_MAX_INTENSITY)
+        log.info("Vibration modules set to %d%% intensity (hidraw: %s)",
+                 VIBRATION_MAX_INTENSITY, control_hidraw_path)
     finally:
         os.close(fd)
