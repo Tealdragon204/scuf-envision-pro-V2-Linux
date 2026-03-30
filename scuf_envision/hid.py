@@ -106,7 +106,7 @@ class BatteryReader:
                 self._level = val
                 log.info("Battery update: %d%%", val)
             else:
-                log.debug("Battery poll: %d%% (unchanged)", val)
+                log.info("Battery poll: %d%% (unchanged)", val)
 
     def _read_loop(self):
         now = time.monotonic()
