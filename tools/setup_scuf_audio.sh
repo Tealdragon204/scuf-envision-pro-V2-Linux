@@ -72,8 +72,9 @@ for card_dir in /sys/class/sound/card*/; do
             vid=$(cat "$check_path/idVendor" 2>/dev/null)
             pid=$(cat "$check_path/idProduct" 2>/dev/null)
             if [ "$vid" = "1b1c" ] && { [ "$pid" = "3a05" ] || [ "$pid" = "3a08" ]; }; then
-                if amixer -c "$card_num" sset Headset 100% unmute >/dev/null 2>&1; then
-                    echo "  Set card $card_num (SCUF) Headset mixer to 100%"
+                if amixer -c "$card_num" cset numid=8 32,32 >/dev/null 2>&1; then
+                    alsactl store "$card_num" 2>/dev/null || true
+                    echo "  Set card $card_num (SCUF) numid=8 to 32,32 and stored"
                     FOUND_CARD=true
                 else
                     echo "  Card $card_num (SCUF) found but could not set mixer"
