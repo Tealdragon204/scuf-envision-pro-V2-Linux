@@ -5,6 +5,7 @@ Phase 9: Battery level reading via the control HID interface.
 """
 
 import os
+import select
 import struct
 import threading
 import logging
@@ -39,12 +40,14 @@ class BatteryReader:
         """Open hidraw, read initial level, and start the background read loop."""
         self._fd = os.open(self._path, os.O_RDWR)
         os.write(self._fd, _CMD_BATTERY)
-        data = os.read(self._fd, _REPORT_SIZE)
-        if len(data) >= 6:
-            val = struct.unpack_from('<H', data, 4)[0] // 10
-            if val > 0:
-                self._level = val
-                log.info("Battery level: %d%%", val)
+        ready, _, _ = select.select([self._fd], [], [], 0.5)
+        if ready:
+            data = os.read(self._fd, _REPORT_SIZE)
+            if len(data) >= 6:
+                val = struct.unpack_from('<H', data, 4)[0] // 10
+                if val > 0:
+                    self._level = val
+                    log.info("Battery level: %d%%", val)
         self._thread = threading.Thread(
             target=self._read_loop, daemon=True, name="battery-reader"
         )
