@@ -121,7 +121,8 @@ class BatteryReader:
         self._thread = None
         # Sorted descending so we can find the highest crossed threshold easily
         self._thresholds: list[int] = sorted(notify_thresholds or [], reverse=True)
-        self._notified: set[int] = set()  # thresholds already fired this session
+        self._notified: set[int] = set()
+        self._prev_level = -1
 
     @property
     def level(self) -> int:
@@ -174,9 +175,16 @@ class BatteryReader:
             self._check_thresholds(val)
 
     def _check_thresholds(self, level: int) -> None:
-        """Fire a notification for each threshold crossed downward (once per session)."""
+        """Fire a notification for each threshold crossed downward.
+
+        Resets silently when battery recovers above a threshold so subsequent
+        drops trigger again. Never fires on an upward crossing.
+        """
+        going_down = self._prev_level > 0 and level < self._prev_level
         for t in self._thresholds:
-            if level <= t and t not in self._notified:
+            if level > t:
+                self._notified.discard(t)  # recovered; allow re-trigger on next drop
+            elif going_down and t not in self._notified:
                 self._notified.add(t)
                 if t <= 5:
                     body = (
@@ -194,9 +202,7 @@ class BatteryReader:
                     args=(f"SCUF Controller Battery Low ({level}%)", body, urgency),
                     daemon=True,
                 ).start()
-            elif level > t and t in self._notified:
-                # Reset so the threshold fires again if battery drops below it again
-                self._notified.discard(t)
+        self._prev_level = level
 
     def _read_loop(self):
         now = time.monotonic()
