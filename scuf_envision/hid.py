@@ -86,6 +86,28 @@ class BatteryReader:
         )
         self._thread.start()
 
+    def _parse_battery(self, data: bytes) -> None:
+        """Try both response formats and log if a valid level is found."""
+        val = 0
+        # Unsolicited dongle report: data[0]==0x03, data[2]==0x01, data[3]==0x0f
+        if (len(data) >= 7
+                and data[0] == 0x03
+                and data[2] == 0x01
+                and data[3] == 0x0f):
+            val = struct.unpack_from('<H', data, 5)[0] // 10
+        # Direct query response: battery at [4:6]
+        elif len(data) >= 6:
+            candidate = struct.unpack_from('<H', data, 4)[0] // 10
+            if 0 < candidate <= 100:
+                val = candidate
+
+        if val > 0:
+            if val != self._level:
+                self._level = val
+                log.info("Battery update: %d%%", val)
+            else:
+                log.debug("Battery poll: %d%% (unchanged)", val)
+
     def _read_loop(self):
         now = time.monotonic()
         next_keepalive = now + _KEEPALIVE_INTERVAL
@@ -102,14 +124,7 @@ class BatteryReader:
                     data = os.read(self._fd, _REPORT_SIZE)
                 except OSError:
                     break
-                if (len(data) >= 7
-                        and data[0] == 0x03
-                        and data[2] == 0x01
-                        and data[3] == 0x0f):
-                    val = struct.unpack_from('<H', data, 5)[0] // 10
-                    if val > 0 and val != self._level:
-                        self._level = val
-                        log.info("Battery update: %d%%", val)
+                self._parse_battery(data)
 
             now = time.monotonic()
             if now >= next_keepalive:
@@ -117,6 +132,7 @@ class BatteryReader:
                     os.write(self._fd, _packet(self._endpoint, _CMD_KEEPALIVE))
                 except OSError:
                     break
+                log.debug("Battery keepalive sent")
                 next_keepalive = now + _KEEPALIVE_INTERVAL
 
             if now >= next_battery:
@@ -124,6 +140,7 @@ class BatteryReader:
                     os.write(self._fd, _packet(self._endpoint, _CMD_BATTERY))
                 except OSError:
                     break
+                log.info("Battery poll sent")
                 next_battery = now + _BATTERY_INTERVAL
 
     def close(self):
