@@ -47,6 +47,7 @@ class BridgeService:
         self._ff_effects = {}  # id -> (strong_magnitude, weak_magnitude)
         self._ff_gain = 65535  # FF_GAIN: global rumble intensity (0-65535)
 
+        self._battery = None
         self._physical = None
         self._grabbed_devices = []
         self._running = False
@@ -71,6 +72,14 @@ class BridgeService:
                 if self.discovered.control_hidraw_path:
                     init_vibration_modules(self.discovered.control_hidraw_path)
                 self._rumble = RumbleHandler(self.discovered.hidraw_path)
+            if self.discovered.control_hidraw_path:
+                from .hid import BatteryReader
+                self._battery = BatteryReader(self.discovered.control_hidraw_path)
+                try:
+                    self._battery.start()
+                except OSError as e:
+                    log.warning("Battery reader unavailable: %s", e)
+                    self._battery = None
             self._open_devices()
             log.info("Bridge started - SCUF -> Xbox translation active")
             self._run_with_reconnect()
@@ -333,6 +342,17 @@ class BridgeService:
                         if discovered.control_hidraw_path:
                             init_vibration_modules(discovered.control_hidraw_path)
                         self._rumble = RumbleHandler(discovered.hidraw_path)
+                    if self._battery:
+                        self._battery.close()
+                        self._battery = None
+                    if discovered.control_hidraw_path:
+                        from .hid import BatteryReader
+                        self._battery = BatteryReader(discovered.control_hidraw_path)
+                        try:
+                            self._battery.start()
+                        except OSError as e:
+                            log.warning("Battery reader unavailable after reconnect: %s", e)
+                            self._battery = None
                     return True
                 except OSError as e:
                     log.warning(f"Device found but failed to open: {e}")
@@ -352,6 +372,9 @@ class BridgeService:
         if self._rumble:
             self._rumble.close()
             self._rumble = None
+        if self._battery:
+            self._battery.close()
+            self._battery = None
         self._release_physical()
         self.gamepad.close()
         log.info("Cleanup complete")
