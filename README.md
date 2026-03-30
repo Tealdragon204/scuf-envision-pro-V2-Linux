@@ -8,7 +8,7 @@ A userspace driver that makes the SCUF Envision Pro V2 controller work correctly
 
 The SCUF Envision Pro V2 (Corsair VID `1b1c`, PID `3a05`) sends **wildly non-standard evdev button and axis codes** on Linux. Without this driver, buttons are mismatched (X/Y swapped, bumpers in wrong slots, triggers on wrong axes) and games are unplayable.
 
-Additionally, the controller's USB audio "Headset" mixer reports a broken dB range, causing volume control to not work under PipeWire/WirePlumber without the included audio fix.
+Additionally, the controller's USB audio has two problems: the hardware mixer defaults to 50% output power (`numid=8` at 16,16 instead of 32,32), and the "Headset" mixer reports a broken dB range that makes PipeWire/WirePlumber volume control non-functional. Both are fixed by the included audio setup.
 
 ## How It Works
 
@@ -620,7 +620,7 @@ Mapping data verified against:
 - [cacique-envision-pro-linux](https://github.com/Gicotto/cacique-envision-pro-linux) (Python) by Gicotto
 
 HID/USB protocol research and hidraw rumble packet implementation informed by:
-- [OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub) by jurkovic-nikola — a comprehensive open-source Linux driver for Corsair USB devices (fans, cooling, lighting, and more). It covers far more hardware than this project needs, but its HID protocol work and device communication patterns were a valuable reference for understanding how Corsair iCUE-protocol devices talk over hidraw.
+- [OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub) by jurkovic-nikola — a comprehensive open-source Linux driver for Corsair USB devices (fans, cooling, lighting, and more). It covers far more hardware than this project needs, but its HID protocol work, device communication patterns, and [SCUF controller audio fix](https://github.com/jurkovic-nikola/OpenLinkHub/blob/main/docs/scuf-controller.md) (`amixer cset numid=8 32,32` + `api.alsa.use-acp = false`) were valuable references.
 
 ## License
 
