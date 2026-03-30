@@ -255,6 +255,36 @@ sudo /opt/scuf-envision/tools/scuf-audio-toggle status
 
 ---
 
+## Updating
+
+```bash
+# 1. Pull the latest changes
+git pull
+
+# 2. Re-copy the driver files to the install location
+sudo cp -r scuf_envision /opt/scuf-envision/
+
+# 3. Update udev rules and WirePlumber audio config
+sudo cp 99-scuf-envision.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo cp 50-scuf-audio.conf /etc/wireplumber/wireplumber.conf.d/
+
+# 4. Restart the driver and audio stack
+sudo systemctl restart scuf-envision.service
+systemctl --user restart wireplumber pipewire pipewire-pulse
+```
+
+Then replug the controller (or run `sudo bash tools/setup_scuf_audio.sh`) so the updated udev rule fires and sets the ALSA mixer level.
+
+Verify the update took effect:
+
+```bash
+sudo systemctl status scuf-envision.service
+journalctl -u scuf-envision.service -e
+```
+
+---
+
 ## Uninstallation
 
 ### Using the Uninstall Script
