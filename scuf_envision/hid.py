@@ -7,6 +7,7 @@ Phase 9: Battery level reading via the control HID interface.
 import os
 import select
 import struct
+import subprocess
 import threading
 import time
 import logging
@@ -24,6 +25,65 @@ _ENDPOINT_WIRELESS = 0x09
 
 _KEEPALIVE_INTERVAL  = 20.0   # seconds — matches OLH heartbeat
 _BATTERY_INTERVAL    = 60.0   # seconds — re-poll battery level
+
+
+def _notify(title: str, body: str, urgency: str = "normal") -> None:
+    """Send a desktop notification to the active graphical session user.
+
+    Finds the first active graphical loginctl session, then runs notify-send
+    as that user via runuser with the correct D-Bus session bus address.
+    Silently skips if no graphical session or notify-send is unavailable.
+    """
+    try:
+        sessions = subprocess.check_output(
+            ["loginctl", "list-sessions", "--no-legend", "--no-pager"],
+            text=True, timeout=3,
+        ).splitlines()
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return
+
+    for line in sessions:
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        session_id = parts[0]
+        try:
+            props = subprocess.check_output(
+                ["loginctl", "show-session", session_id,
+                 "--property=Type", "--property=Name", "--property=State"],
+                text=True, timeout=3,
+            )
+        except subprocess.SubprocessError:
+            continue
+
+        prop = dict(p.split("=", 1) for p in props.splitlines() if "=" in p)
+        if prop.get("Type") not in ("x11", "wayland") or prop.get("State") != "active":
+            continue
+
+        username = prop.get("Name", "")
+        if not username:
+            continue
+
+        try:
+            uid_out = subprocess.check_output(["id", "-u", username], text=True, timeout=3)
+            uid = uid_out.strip()
+        except subprocess.SubprocessError:
+            continue
+
+        dbus_addr = f"unix:path=/run/user/{uid}/bus"
+        try:
+            subprocess.run(
+                ["runuser", "-u", username, "--",
+                 "notify-send", "--urgency", urgency,
+                 "--app-name", "SCUF Controller",
+                 "--icon", "battery-caution",
+                 title, body],
+                env={**os.environ, "DBUS_SESSION_BUS_ADDRESS": dbus_addr},
+                timeout=5, check=False,
+            )
+        except (FileNotFoundError, subprocess.SubprocessError) as e:
+            log.debug("notify-send failed: %s", e)
+        return  # only notify once (first active graphical session)
 
 
 def _packet(endpoint: int, cmd: bytes) -> bytes:
@@ -52,12 +112,16 @@ class BatteryReader:
     signature data[0]==0x03, data[2]==0x01, data[3]==0x0f).
     """
 
-    def __init__(self, hidraw_path: str, connection_type: str = "wired"):
+    def __init__(self, hidraw_path: str, connection_type: str = "wired",
+                 notify_thresholds: list[int] | None = None):
         self._path = hidraw_path
         self._endpoint = _ENDPOINT_WIRELESS if connection_type == "wireless" else _ENDPOINT_WIRED
         self._level = -1
         self._fd = None
         self._thread = None
+        # Sorted descending so we can find the highest crossed threshold easily
+        self._thresholds: list[int] = sorted(notify_thresholds or [], reverse=True)
+        self._notified: set[int] = set()  # thresholds already fired this session
 
     @property
     def level(self) -> int:
@@ -107,6 +171,32 @@ class BatteryReader:
                 log.info("Battery update: %d%%", val)
             else:
                 log.info("Battery poll: %d%% (unchanged)", val)
+            self._check_thresholds(val)
+
+    def _check_thresholds(self, level: int) -> None:
+        """Fire a notification for each threshold crossed downward (once per session)."""
+        for t in self._thresholds:
+            if level <= t and t not in self._notified:
+                self._notified.add(t)
+                if t <= 5:
+                    body = (
+                        "Controller will shut off soon!"
+                        if t == 1
+                        else f"Battery at {level}% — plug in soon."
+                    )
+                    urgency = "critical"
+                else:
+                    body = f"Battery at {level}%."
+                    urgency = "normal"
+                log.info("Low battery notification: %d%% (threshold %d%%)", level, t)
+                threading.Thread(
+                    target=_notify,
+                    args=(f"SCUF Controller Battery Low ({level}%)", body, urgency),
+                    daemon=True,
+                ).start()
+            elif level > t and t in self._notified:
+                # Reset so the threshold fires again if battery drops below it again
+                self._notified.discard(t)
 
     def _read_loop(self):
         now = time.monotonic()

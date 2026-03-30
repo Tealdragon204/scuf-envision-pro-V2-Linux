@@ -14,3 +14,15 @@ disabled = false
 #
 # To apply after editing: sudo systemctl restart scuf-envision
 disabled = false
+
+[battery]
+# Send desktop notifications when battery falls below these thresholds.
+# Comma-separated list of percentages (1-100). Each fires once per session
+# and resets if the battery recovers above that threshold.
+# Urgency is "critical" for ≤5%, "normal" for higher.
+# At 1%, the message reads "Controller will shut off soon!".
+#
+# Set notifications = false to disable all low-battery alerts.
+# To apply after editing: sudo systemctl restart scuf-envision
+notifications = true
+notify_thresholds = 20,10,5,1

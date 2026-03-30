@@ -20,6 +20,10 @@ DEFAULTS = {
     "rumble": {
         "disabled": "false",
     },
+    "battery": {
+        "notifications": "true",
+        "notify_thresholds": "20,10,5,1",
+    },
 }
 
 
@@ -68,3 +72,21 @@ def is_rumble_disabled():
     """Return True if rumble.disabled is set to true in config."""
     config = load_config()
     return config.getboolean("rumble", "disabled", fallback=False)
+
+
+def battery_notifications_enabled() -> bool:
+    """Return True if low-battery desktop notifications are enabled."""
+    config = load_config()
+    return config.getboolean("battery", "notifications", fallback=True)
+
+
+def battery_notify_thresholds() -> list[int]:
+    """Return sorted descending list of battery % thresholds that trigger notifications."""
+    config = load_config()
+    raw = config.get("battery", "notify_thresholds", fallback="20,10,5,1")
+    try:
+        thresholds = [int(x.strip()) for x in raw.split(",") if x.strip()]
+        return sorted(set(t for t in thresholds if 0 < t <= 100), reverse=True)
+    except ValueError:
+        log.warning("Invalid battery.notify_thresholds %r, using defaults", raw)
+        return [20, 10, 5, 1]
