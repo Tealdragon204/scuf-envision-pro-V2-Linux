@@ -194,9 +194,6 @@ class BatteryReader:
                     args=(f"SCUF Controller Battery Low ({level}%)", body, urgency),
                     daemon=True,
                 ).start()
-            elif level > t and t in self._notified:
-                # Reset so the threshold fires again if battery drops below it again
-                self._notified.discard(t)
 
     def _read_loop(self):
         now = time.monotonic()
