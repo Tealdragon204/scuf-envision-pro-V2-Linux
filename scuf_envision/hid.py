@@ -12,21 +12,43 @@ import logging
 
 log = logging.getLogger(__name__)
 
-_CMD_BATTERY = bytes([0x02, 0x0f])
 _REPORT_SIZE = 64
+_CMD_SOFTWARE_MODE = bytes([0x01, 0x03, 0x00, 0x02])
+_CMD_BATTERY      = bytes([0x02, 0x0f])
+
+# Endpoint byte differs by connection type (OLH: 0x08 wired, 0x09 wireless dongle)
+_ENDPOINT_WIRED    = 0x08
+_ENDPOINT_WIRELESS = 0x09
+
+
+def _packet(endpoint: int, cmd: bytes) -> bytes:
+    """Build a 64-byte HID OUT report with OLH framing: [0x02, endpoint, cmd...]."""
+    buf = bytearray(64)
+    buf[0] = 0x02
+    buf[1] = endpoint
+    buf[2:2 + len(cmd)] = cmd
+    return bytes(buf)
+
+
+def _read(fd: int, timeout: float) -> bytes:
+    """Read one HID report with a timeout; returns empty bytes on timeout."""
+    r, _, _ = select.select([fd], [], [], timeout)
+    return os.read(fd, _REPORT_SIZE) if r else b''
 
 
 class BatteryReader:
     """Reads battery level from the SCUF control HID interface.
 
-    Sends [0x02, 0x0f] on start to get the current level (bytes [4:6]
-    as LE uint16 / 10). Then loops reading reports; updates on packets
-    where data[0]==0x03, data[2]==0x01, data[3]==0x0f (bytes [5:7]).
-    Runs the read loop in a daemon thread so it doesn't block shutdown.
+    Sends software-mode then battery-query commands using OLH's 64-byte
+    packet framing. For the wireless dongle the initial response may not
+    carry battery data; the background thread catches unsolicited reports
+    matching data[0]==0x03, data[2]==0x01, data[3]==0x0f (bytes [5:7]).
+    For wired, the direct response to the battery query carries it at [4:6].
     """
 
-    def __init__(self, hidraw_path: str):
+    def __init__(self, hidraw_path: str, connection_type: str = "wired"):
         self._path = hidraw_path
+        self._endpoint = _ENDPOINT_WIRELESS if connection_type == "wireless" else _ENDPOINT_WIRED
         self._level = -1
         self._fd = None
         self._thread = None
@@ -37,17 +59,22 @@ class BatteryReader:
         return self._level
 
     def start(self):
-        """Open hidraw, read initial level, and start the background read loop."""
+        """Open hidraw, init software mode, request battery, start read loop."""
         self._fd = os.open(self._path, os.O_RDWR)
-        os.write(self._fd, _CMD_BATTERY)
-        ready, _, _ = select.select([self._fd], [], [], 0.5)
-        if ready:
-            data = os.read(self._fd, _REPORT_SIZE)
-            if len(data) >= 6:
-                val = struct.unpack_from('<H', data, 4)[0] // 10
-                if val > 0:
-                    self._level = val
-                    log.info("Battery level: %d%%", val)
+
+        # Required before battery or any other query (OLH step 2 in Connect())
+        os.write(self._fd, _packet(self._endpoint, _CMD_SOFTWARE_MODE))
+        _read(self._fd, 1.0)  # consume ack
+
+        # Initial battery query; wireless dongle may not respond here directly
+        os.write(self._fd, _packet(self._endpoint, _CMD_BATTERY))
+        data = _read(self._fd, 1.0)
+        if len(data) >= 6:
+            val = struct.unpack_from('<H', data, 4)[0] // 10
+            if val > 0:
+                self._level = val
+                log.info("Battery level: %d%%", val)
+
         self._thread = threading.Thread(
             target=self._read_loop, daemon=True, name="battery-reader"
         )

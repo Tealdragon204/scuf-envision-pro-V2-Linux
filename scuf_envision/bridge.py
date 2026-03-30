@@ -74,7 +74,8 @@ class BridgeService:
                 self._rumble = RumbleHandler(self.discovered.hidraw_path)
             if self.discovered.control_hidraw_path:
                 from .hid import BatteryReader
-                self._battery = BatteryReader(self.discovered.control_hidraw_path)
+                self._battery = BatteryReader(self.discovered.control_hidraw_path,
+                                              self.discovered.connection_type)
                 try:
                     self._battery.start()
                 except OSError as e:
@@ -347,7 +348,8 @@ class BridgeService:
                         self._battery = None
                     if discovered.control_hidraw_path:
                         from .hid import BatteryReader
-                        self._battery = BatteryReader(discovered.control_hidraw_path)
+                        self._battery = BatteryReader(discovered.control_hidraw_path,
+                                                      discovered.connection_type)
                         try:
                             self._battery.start()
                         except OSError as e:
