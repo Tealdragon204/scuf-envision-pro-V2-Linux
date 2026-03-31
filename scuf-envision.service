@@ -14,10 +14,8 @@ RestartSec=3
 User=root
 
 # Hardening
-ProtectHome=true
+ProtectHome=read-only
 ProtectSystem=strict
-# Allow reading user D-Bus sockets for desktop notifications
-BindReadOnlyPaths=/run/user
 
 [Install]
 WantedBy=multi-user.target
