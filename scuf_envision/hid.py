@@ -71,10 +71,12 @@ def _notify(title: str, body: str, urgency: str = "normal") -> None:
             continue
 
         dbus_addr = f"unix:path=/run/user/{uid}/bus"
+        expire_ms = "25000" if urgency == "critical" else "5000"
         try:
             subprocess.run(
                 ["runuser", "-u", username, "--",
                  "notify-send", "--urgency", urgency,
+                 "--expire-time", expire_ms,
                  "--app-name", "SCUF Controller",
                  "--icon", "battery-caution",
                  title, body],
