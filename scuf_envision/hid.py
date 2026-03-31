@@ -207,7 +207,7 @@ class BatteryReader:
                 log.info("Low battery notification: %d%% (threshold %d%%)", level, t)
                 threading.Thread(
                     target=_notify,
-                    args=(f"SCUF Controller Battery Low", body, "critical"),
+                    args=("SCUF Controller Battery Low", body, "normal"),
                     daemon=True,
                 ).start()
         self._prev_level = level
