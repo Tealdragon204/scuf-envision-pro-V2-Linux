@@ -21,7 +21,7 @@ from evdev import ecodes
 from .constants import (
     BUTTON_MAP, PADDLE_MAP, AXIS_MAP, POLL_TIMEOUT_MS,
 )
-from .discovery import DiscoveredDevice, discover_scuf, discover_scuf_with_retry
+from .discovery import DiscoveredDevice, discover_scuf, discover_scuf_with_retry, find_competing_gamepads
 from .input_filter import InputFilter
 from .virtual_gamepad import VirtualGamepad
 
@@ -85,6 +85,7 @@ class BridgeService:
                     log.warning("Battery reader unavailable: %s", e)
                     self._battery = None
             self._open_devices()
+            self._suppress_competing_gamepads()
             log.info("Bridge started - SCUF -> Xbox translation active")
             self._run_with_reconnect()
         finally:
@@ -125,6 +126,17 @@ class BridgeService:
                 log.debug(f"Grabbed secondary: {sec_path}")
             except (OSError, PermissionError) as e:
                 log.warning(f"Could not grab secondary device {sec_path}: {e}")
+
+    def _suppress_competing_gamepads(self):
+        """Grab any competing virtual gamepads (e.g. OLH's) so games don't see them."""
+        for path in find_competing_gamepads():
+            try:
+                dev = evdev.InputDevice(path)
+                dev.grab()
+                self._grabbed_devices.append(dev)
+                log.info("Suppressed competing gamepad: %s (%s)", path, dev.name)
+            except OSError as e:
+                log.warning("Could not suppress competing gamepad %s: %s", path, e)
 
     def _event_loop(self):
         """Main polling loop at ~250 Hz."""

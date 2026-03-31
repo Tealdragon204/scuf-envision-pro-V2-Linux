@@ -329,6 +329,39 @@ def _find_hidraw_for_gamepad(event_path: str) -> Optional[str]:
     return first_match
 
 
+def find_competing_gamepads() -> list[str]:
+    """
+    Find virtual gamepad devices that may conflict with ours (e.g. OLH's).
+
+    Scans all evdev devices, skips our own virtual gamepad, skips physical
+    (non-virtual) devices, and returns paths of virtual gamepads whose name
+    contains 'scuf' or 'openlinkh'.
+    """
+    import evdev
+    from .constants import VIRTUAL_DEVICE_NAME
+
+    competing = []
+    for path in evdev.list_devices():
+        try:
+            dev = evdev.InputDevice(path)
+            name = dev.name
+            dev.close()
+        except OSError:
+            continue
+        if name == VIRTUAL_DEVICE_NAME:
+            continue
+        sysfs = f"/sys/class/input/{os.path.basename(path)}/device"
+        try:
+            real = os.path.realpath(sysfs)
+        except OSError:
+            continue
+        if "virtual" not in real:
+            continue
+        if "scuf" in name.lower() or "openlinkh" in name.lower():
+            competing.append(path)
+    return competing
+
+
 def _find_control_hidraw(gamepad_hidraw: Optional[str]) -> Optional[str]:
     """
     Find the control hidraw device for sending configuration commands
