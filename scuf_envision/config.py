@@ -24,6 +24,9 @@ DEFAULTS = {
         "notifications": "true",
         "notify_thresholds": "20,10,5,1",
     },
+    "driver": {
+        "poll_timeout_ms": "2",
+    },
 }
 
 
@@ -78,6 +81,16 @@ def battery_notifications_enabled() -> bool:
     """Return True if low-battery desktop notifications are enabled."""
     config = load_config()
     return config.getboolean("battery", "notifications", fallback=True)
+
+
+def poll_timeout_ms() -> int:
+    """Return poll timeout in ms (default 2 = 500 Hz, matches hardware).
+
+    Does not affect in-game input latency — the event loop is interrupt-driven
+    and wakes immediately on hardware events regardless of this value.
+    Increase only to reduce idle CPU on battery-powered systems.
+    """
+    return load_config().getint("driver", "poll_timeout_ms", fallback=2)
 
 
 def battery_notify_thresholds() -> list[int]:

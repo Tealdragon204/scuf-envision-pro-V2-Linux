@@ -26,3 +26,16 @@ disabled = false
 # To apply after editing: sudo systemctl restart scuf-envision
 notifications = true
 notify_thresholds = 20,10,5,1
+
+[driver]
+# Event loop poll timeout in milliseconds.
+# Default 2 matches the controller's 500 Hz report rate (wired + Slipstream wireless).
+#
+# This does NOT affect input latency during gameplay — the driver wakes
+# immediately on each hardware event regardless of this value. The timeout
+# only determines how quickly the driver responds to idle conditions
+# (e.g. shutdown, wireless disconnect detection).
+#
+# Increase (e.g. 8) to reduce idle CPU use on battery-powered systems.
+# To apply after editing: sudo systemctl restart scuf-envision
+poll_timeout_ms = 2
