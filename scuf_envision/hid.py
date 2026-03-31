@@ -77,8 +77,8 @@ def _notify(title: str, body: str, urgency: str = "normal") -> None:
             log.warning("D-Bus socket not found at %s — notification suppressed", dbus_addr)
             continue
 
-        expire_ms = "25000" if urgency == "critical" else "5000"
-        sound = "audio-volume-change" if urgency != "critical" else "battery-caution"
+        expire_ms = "10000"
+        sound = "battery-caution" if urgency == "critical" else "audio-volume-change"
         env = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": dbus_addr}
         log.debug("Sending notification via runuser as %s (bus: %s)", username, dbus_addr)
         try:
@@ -199,18 +199,15 @@ class BatteryReader:
             elif t not in self._notified and (first or self._prev_level > t):
                 self._notified.add(t)
                 if t == 1:
-                    urgency = "critical"
                     body = f"Battery below {t}% ({level}%) — controller will shut off soon!"
                 elif t <= 5:
-                    urgency = "critical"
                     body = f"Battery below {t}% ({level}%) — plug in soon."
                 else:
-                    urgency = "normal"
                     body = f"Battery below {t}% (currently {level}%)."
                 log.info("Low battery notification: %d%% (threshold %d%%)", level, t)
                 threading.Thread(
                     target=_notify,
-                    args=(f"SCUF Controller Battery Low", body, urgency),
+                    args=(f"SCUF Controller Battery Low", body, "critical"),
                     daemon=True,
                 ).start()
         self._prev_level = level
