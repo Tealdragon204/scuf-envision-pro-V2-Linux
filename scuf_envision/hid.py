@@ -50,7 +50,8 @@ def _notify(title: str, body: str, urgency: str = "normal") -> None:
         try:
             props = subprocess.check_output(
                 ["loginctl", "show-session", session_id,
-                 "--property=Type", "--property=Name", "--property=State"],
+                 "--property=Type", "--property=Name", "--property=State",
+                 "--property=RuntimePath"],
                 text=True, timeout=3,
             )
         except subprocess.SubprocessError:
@@ -65,12 +66,16 @@ def _notify(title: str, body: str, urgency: str = "normal") -> None:
             continue
 
         try:
-            uid_out = subprocess.check_output(["id", "-u", username], text=True, timeout=3)
-            uid = uid_out.strip()
+            uid = subprocess.check_output(["id", "-u", username], text=True, timeout=3).strip()
         except subprocess.SubprocessError:
             continue
 
-        dbus_addr = f"unix:path=/run/user/{uid}/bus"
+        # Prefer the XDG_RUNTIME_DIR reported by loginctl; fall back to convention
+        runtime_dir = prop.get("RuntimePath") or f"/run/user/{uid}"
+        dbus_addr = f"unix:path={runtime_dir}/bus"
+        if not os.path.exists(f"{runtime_dir}/bus"):
+            log.debug("D-Bus socket not found at %s, skipping notification", dbus_addr)
+            continue
         expire_ms = "25000" if urgency == "critical" else "5000"
         sound = "audio-volume-change" if urgency != "critical" else "battery-caution"
         env = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": dbus_addr}
@@ -141,14 +146,8 @@ class BatteryReader:
         os.write(self._fd, _packet(self._endpoint, _CMD_SOFTWARE_MODE))
         _read(self._fd, 1.0)  # consume ack
 
-        # Initial battery query
+        # Queue initial battery query; _read_loop handles the response
         os.write(self._fd, _packet(self._endpoint, _CMD_BATTERY))
-        data = _read(self._fd, 1.0)
-        if len(data) >= 6:
-            val = struct.unpack_from('<H', data, 4)[0] // 10
-            if val > 0:
-                self._level = val
-                log.info("Battery level: %d%%", val)
 
         self._thread = threading.Thread(
             target=self._read_loop, daemon=True, name="battery-reader"
