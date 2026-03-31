@@ -188,14 +188,12 @@ class BridgeService:
         if code in BUTTON_MAP:
             mapped = BUTTON_MAP[code]
             self.gamepad.emit_button(mapped, event.value)
-            self.gamepad.syn()
             return
 
         # Check paddle map
         if code in PADDLE_MAP:
             mapped = PADDLE_MAP[code]
             self.gamepad.emit_button(mapped, event.value)
-            self.gamepad.syn()
             return
 
         # Unknown button - log it for debugging
@@ -241,7 +239,6 @@ class BridgeService:
             filtered, changed = self.filter.suppress_jitter("lt", filtered)
             if changed:
                 self.gamepad.emit_axis(ecodes.ABS_Z, filtered)
-                self.gamepad.syn()
             return
         elif code == ecodes.ABS_RY:
             # SCUF ABS_RY -> Right Trigger
@@ -249,12 +246,10 @@ class BridgeService:
             filtered, changed = self.filter.suppress_jitter("rt", filtered)
             if changed:
                 self.gamepad.emit_axis(ecodes.ABS_RZ, filtered)
-                self.gamepad.syn()
             return
 
         # D-pad and anything else: pass through mapped
         self.gamepad.emit_axis(mapped, value)
-        self.gamepad.syn()
 
     def _handle_ff_events(self):
         """Handle force-feedback events from games via the virtual gamepad."""
@@ -313,7 +308,6 @@ class BridgeService:
         if x_changed or y_changed:
             self.gamepad.emit_axis(out_x_code, fx)
             self.gamepad.emit_axis(out_y_code, fy)
-            self.gamepad.syn()
 
     def _release_physical(self):
         """Release physical devices only, keeping the virtual gamepad alive."""
