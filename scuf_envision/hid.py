@@ -190,20 +190,19 @@ class BatteryReader:
                 self._notified.discard(t)
             elif t not in self._notified and (first or self._prev_level > t):
                 self._notified.add(t)
-                if t <= 5:
-                    body = (
-                        "Controller will shut off soon!"
-                        if t == 1
-                        else f"Battery at {level}% — plug in soon."
-                    )
+                if t == 1:
                     urgency = "critical"
+                    body = f"Battery below {t}% ({level}%) — controller will shut off soon!"
+                elif t <= 5:
+                    urgency = "critical"
+                    body = f"Battery below {t}% ({level}%) — plug in soon."
                 else:
-                    body = f"Battery at {level}%."
                     urgency = "normal"
+                    body = f"Battery below {t}% (currently {level}%)."
                 log.info("Low battery notification: %d%% (threshold %d%%)", level, t)
                 threading.Thread(
                     target=_notify,
-                    args=(f"SCUF Controller Battery Low ({level}%)", body, urgency),
+                    args=(f"SCUF Controller Battery Low", body, urgency),
                     daemon=True,
                 ).start()
         self._prev_level = level
