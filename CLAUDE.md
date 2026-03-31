@@ -58,7 +58,7 @@ up to 5 min while waiting for controller reconnection.
 | 7 | Diagnostics | ✅ | `tools/diag.py` |
 | 8 | Audio fix v2 (amixer numid=8 volume + serial-aware WirePlumber config) | Planned | `install.sh`, `50-scuf-audio.conf`, `tools/setup_scuf_audio.sh` |
 | 9 | Battery detection | Planned | `scuf_envision/hid.py` (new) |
-| 10 | OpenLinkHub coexistence (disable OLH virtual gamepad; keep HID layer ours) | Planned | `bridge.py`, `scuf_envision/hid.py` |
+| 10 | OpenLinkHub coexistence (disable OLH virtual gamepad; keep HID layer ours) | ⚠️ Partial | `bridge.py`, `scuf_envision/discovery.py` — grab suppresses OLH's uinput gamepad; HID-layer conflict (duplicate keepalives when OLH runs) unresolved |
 | 11 | Button remapping + per-game profiles | Planned | `scuf_envision/config.py`, `bridge.py`, `constants.py` |
 | 12 | RGB control | Planned | `scuf_envision/hid.py` |
 | 13 | Vibration/haptics passthrough | Planned | `scuf_envision/hid.py`, `virtual_gamepad.py` |

@@ -134,7 +134,12 @@ class BridgeService:
                 dev = evdev.InputDevice(path)
                 dev.grab()
                 self._grabbed_devices.append(dev)
-                log.info("Suppressed competing gamepad: %s (%s)", path, dev.name)
+                log.warning(
+                    "OpenLinkHub virtual gamepad suppressed: %s (%s). "
+                    "To avoid HID command conflicts, set \"enableGamepad\": false "
+                    "in /opt/OpenLinkHub/config.json and restart OpenLinkHub.",
+                    path, dev.name,
+                )
             except OSError as e:
                 log.warning("Could not suppress competing gamepad %s: %s", path, e)
 
