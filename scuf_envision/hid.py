@@ -176,8 +176,9 @@ class BatteryReader:
                 and data[2] == 0x01
                 and data[3] == 0x0f):
             val = struct.unpack_from('<H', data, 5)[0] // 10
-        # Direct query response: battery at [4:6]
-        elif len(data) >= 6:
+        # Direct query response: data[3] must echo the battery command byte (0x0f)
+        # to reject unrelated HID reports (button presses, etc.) that share the fd.
+        elif len(data) >= 6 and data[3] == 0x0f:
             candidate = struct.unpack_from('<H', data, 4)[0] // 10
             if 0 < candidate <= 100:
                 val = candidate
@@ -208,23 +209,28 @@ class BatteryReader:
         # so we catch any threshold the battery has already dipped below
         effective_prev = -1 if first_stable else self._prev_level
 
+        newly_breached = []
         for t in self._thresholds:
             if level > t:
                 self._notified.discard(t)
             elif not suppress and t not in self._notified and (effective_prev < 0 or effective_prev > t):
                 self._notified.add(t)
-                if t == 1:
-                    body = f"Battery below {t}% ({level}%) — controller will shut off soon!"
-                elif t <= 5:
-                    body = f"Battery below {t}% ({level}%) — plug in soon."
-                else:
-                    body = f"Battery below {t}% (currently {level}%)."
-                log.info("Low battery notification: %d%% (threshold %d%%)", level, t)
-                threading.Thread(
-                    target=_notify,
-                    args=("SCUF Controller Battery Low", body, "normal"),
-                    daemon=True,
-                ).start()
+                newly_breached.append(t)
+
+        if newly_breached:
+            t = min(newly_breached)  # most severe threshold only
+            if t == 1:
+                body = f"Battery below {t}% ({level}%) — controller will shut off soon!"
+            elif t <= 5:
+                body = f"Battery below {t}% ({level}%) — plug in soon."
+            else:
+                body = f"Battery below {t}% (currently {level}%)."
+            log.info("Low battery notification: %d%% (threshold %d%%)", level, t)
+            threading.Thread(
+                target=_notify,
+                args=("SCUF Controller Battery Low", body, "normal"),
+                daemon=True,
+            ).start()
         self._prev_level = level
 
     def _read_loop(self):
