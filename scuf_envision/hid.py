@@ -71,15 +71,19 @@ def _notify(title: str, body: str, urgency: str = "normal") -> None:
             continue
 
         dbus_addr = f"unix:path=/run/user/{uid}/bus"
+        expire_ms = "25000" if urgency == "critical" else "5000"
+        sound = "audio-volume-change" if urgency != "critical" else "battery-caution"
+        env = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": dbus_addr}
         try:
             subprocess.run(
                 ["runuser", "-u", username, "--",
                  "notify-send", "--urgency", urgency,
+                 "--expire-time", expire_ms,
                  "--app-name", "SCUF Controller",
                  "--icon", "battery-caution",
+                 "--hint", f"string:sound-name:{sound}",
                  title, body],
-                env={**os.environ, "DBUS_SESSION_BUS_ADDRESS": dbus_addr},
-                timeout=5, check=False,
+                env=env, timeout=5, check=False,
             )
         except (FileNotFoundError, subprocess.SubprocessError) as e:
             log.debug("notify-send failed: %s", e)
@@ -175,16 +179,17 @@ class BatteryReader:
             self._check_thresholds(val)
 
     def _check_thresholds(self, level: int) -> None:
-        """Fire a notification for each threshold crossed downward.
+        """Fire a notification when crossing a threshold downward.
 
-        Resets silently when battery recovers above a threshold so subsequent
-        drops trigger again. Never fires on an upward crossing.
+        On the first reading, fires for any threshold already breached (battery
+        state unknown at startup). On subsequent reads, fires only at the moment
+        of crossing (prev > threshold >= current). Resets silently on recovery.
         """
-        going_down = self._prev_level > 0 and level < self._prev_level
+        first = self._prev_level < 0
         for t in self._thresholds:
             if level > t:
-                self._notified.discard(t)  # recovered; allow re-trigger on next drop
-            elif going_down and t not in self._notified:
+                self._notified.discard(t)
+            elif t not in self._notified and (first or self._prev_level > t):
                 self._notified.add(t)
                 if t <= 5:
                     body = (
