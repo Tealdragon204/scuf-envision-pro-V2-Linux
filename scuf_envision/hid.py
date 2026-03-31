@@ -72,6 +72,8 @@ def _notify(title: str, body: str, urgency: str = "normal") -> None:
 
         dbus_addr = f"unix:path=/run/user/{uid}/bus"
         expire_ms = "25000" if urgency == "critical" else "5000"
+        sound = "audio-volume-change" if urgency != "critical" else "battery-caution"
+        env = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": dbus_addr}
         try:
             subprocess.run(
                 ["runuser", "-u", username, "--",
@@ -79,9 +81,9 @@ def _notify(title: str, body: str, urgency: str = "normal") -> None:
                  "--expire-time", expire_ms,
                  "--app-name", "SCUF Controller",
                  "--icon", "battery-caution",
+                 "--hint", f"string:sound-name:{sound}",
                  title, body],
-                env={**os.environ, "DBUS_SESSION_BUS_ADDRESS": dbus_addr},
-                timeout=5, check=False,
+                env=env, timeout=5, check=False,
             )
         except (FileNotFoundError, subprocess.SubprocessError) as e:
             log.debug("notify-send failed: %s", e)
