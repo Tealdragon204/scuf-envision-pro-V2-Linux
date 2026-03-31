@@ -18,10 +18,9 @@ import time
 import evdev
 from evdev import ecodes
 
-from .constants import (
-    BUTTON_MAP, PADDLE_MAP, AXIS_MAP, POLL_TIMEOUT_MS,
-)
-from .discovery import DiscoveredDevice, discover_scuf, discover_scuf_with_retry
+from .constants import BUTTON_MAP, PADDLE_MAP, AXIS_MAP
+from .config import poll_timeout_ms as _poll_timeout_ms
+from .discovery import DiscoveredDevice, discover_scuf, discover_scuf_with_retry, find_competing_gamepads
 from .input_filter import InputFilter
 from .virtual_gamepad import VirtualGamepad
 
@@ -85,6 +84,7 @@ class BridgeService:
                     log.warning("Battery reader unavailable: %s", e)
                     self._battery = None
             self._open_devices()
+            self._suppress_competing_gamepads()
             log.info("Bridge started - SCUF -> Xbox translation active")
             self._run_with_reconnect()
         finally:
@@ -126,11 +126,28 @@ class BridgeService:
             except (OSError, PermissionError) as e:
                 log.warning(f"Could not grab secondary device {sec_path}: {e}")
 
+    def _suppress_competing_gamepads(self):
+        """Grab any competing virtual gamepads (e.g. OLH's) so games don't see them."""
+        for path in find_competing_gamepads():
+            try:
+                dev = evdev.InputDevice(path)
+                dev.grab()
+                self._grabbed_devices.append(dev)
+                log.warning(
+                    "OpenLinkHub virtual gamepad suppressed: %s (%s). "
+                    "To avoid HID command conflicts, set \"enableGamepad\": false "
+                    "in /opt/OpenLinkHub/config.json and restart OpenLinkHub.",
+                    path, dev.name,
+                )
+            except OSError as e:
+                log.warning("Could not suppress competing gamepad %s: %s", path, e)
+
     def _event_loop(self):
-        """Main polling loop at ~250 Hz."""
+        """Main event loop — interrupt-driven via select, effectively 500 Hz."""
         phys_fd = self._physical.fd
         poll = select.poll()
         poll.register(phys_fd, select.POLLIN)
+        timeout = _poll_timeout_ms()
 
         # Also poll the virtual gamepad's fd for FF upload/erase/play events
         vgpad_fd = self.gamepad.fd if self._rumble else -1
@@ -138,7 +155,7 @@ class BridgeService:
             poll.register(vgpad_fd, select.POLLIN)
 
         while self._running:
-            events = poll.poll(POLL_TIMEOUT_MS)
+            events = poll.poll(timeout)
             if not events:
                 continue
 

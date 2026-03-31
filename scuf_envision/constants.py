@@ -111,7 +111,7 @@ VIBRATION_TRANSFER_HEADER = bytearray([0x00, 0x02, 0x08, 0x01])
 VIBRATION_TRANSFER_SIZE = 65
 
 # --- Polling ---
-POLL_TIMEOUT_MS = 4  # ~250 Hz polling rate
+POLL_TIMEOUT_MS = 2  # 500 Hz — matches hardware report rate (wired + Slipstream wireless)
 
 # --- Deadzone defaults ---
 STICK_DEADZONE = 3500          # ~10.7% radial deadzone
