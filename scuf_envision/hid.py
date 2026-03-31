@@ -74,13 +74,15 @@ def _notify(title: str, body: str, urgency: str = "normal") -> None:
         runtime_dir = prop.get("RuntimePath") or f"/run/user/{uid}"
         dbus_addr = f"unix:path={runtime_dir}/bus"
         if not os.path.exists(f"{runtime_dir}/bus"):
-            log.debug("D-Bus socket not found at %s, skipping notification", dbus_addr)
+            log.warning("D-Bus socket not found at %s — notification suppressed", dbus_addr)
             continue
+
         expire_ms = "25000" if urgency == "critical" else "5000"
         sound = "audio-volume-change" if urgency != "critical" else "battery-caution"
         env = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": dbus_addr}
+        log.debug("Sending notification via runuser as %s (bus: %s)", username, dbus_addr)
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["runuser", "-u", username, "--",
                  "notify-send", "--urgency", urgency,
                  "--expire-time", expire_ms,
@@ -89,9 +91,15 @@ def _notify(title: str, body: str, urgency: str = "normal") -> None:
                  "--hint", f"string:sound-name:{sound}",
                  title, body],
                 env=env, timeout=5, check=False,
+                capture_output=True, text=True,
             )
+            if result.returncode != 0:
+                log.warning("notify-send exited %d: %s", result.returncode,
+                            (result.stderr or result.stdout).strip())
+            else:
+                log.info("Notification sent to %s", username)
         except (FileNotFoundError, subprocess.SubprocessError) as e:
-            log.debug("notify-send failed: %s", e)
+            log.warning("notify-send failed: %s", e)
         return  # only notify once (first active graphical session)
 
 
@@ -190,20 +198,19 @@ class BatteryReader:
                 self._notified.discard(t)
             elif t not in self._notified and (first or self._prev_level > t):
                 self._notified.add(t)
-                if t <= 5:
-                    body = (
-                        "Controller will shut off soon!"
-                        if t == 1
-                        else f"Battery at {level}% — plug in soon."
-                    )
+                if t == 1:
                     urgency = "critical"
+                    body = f"Battery below {t}% ({level}%) — controller will shut off soon!"
+                elif t <= 5:
+                    urgency = "critical"
+                    body = f"Battery below {t}% ({level}%) — plug in soon."
                 else:
-                    body = f"Battery at {level}%."
                     urgency = "normal"
+                    body = f"Battery below {t}% (currently {level}%)."
                 log.info("Low battery notification: %d%% (threshold %d%%)", level, t)
                 threading.Thread(
                     target=_notify,
-                    args=(f"SCUF Controller Battery Low ({level}%)", body, urgency),
+                    args=(f"SCUF Controller Battery Low", body, urgency),
                     daemon=True,
                 ).start()
         self._prev_level = level
