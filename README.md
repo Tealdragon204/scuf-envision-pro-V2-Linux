@@ -146,6 +146,40 @@ To check current state:
 sudo /opt/scuf-envision/tools/scuf-audio-toggle status
 ```
 
+### Battery Monitoring
+
+The driver reads battery level from the controller via the HID raw interface and logs it to the service journal:
+
+```bash
+journalctl -u scuf-envision.service -e | grep -i battery
+# Example: 22:44:00 [INFO] scuf_envision.hid: Battery update: 47%
+```
+
+**Low-battery desktop notifications** are sent automatically when the battery drops below configured thresholds. By default these are 20%, 10%, 5%, and 1%. The 1% notification reads "controller will shut off soon!".
+
+Notifications are delivered to the active graphical session (KDE, GNOME, etc.) via `notify-send`. No extra setup is required.
+
+**Configure thresholds** in `/etc/scuf-envision/config.ini`:
+
+```ini
+[battery]
+# Set notifications = false to disable all low-battery alerts
+notifications = true
+
+# Comma-separated list of percentages. A notification fires the first time
+# the battery drops into each zone. Resets if battery recovers above a threshold.
+notify_thresholds = 20,10,5,1
+```
+
+Restart the service after editing:
+```bash
+sudo systemctl restart scuf-envision
+```
+
+> **Note:** Battery polling requires `notify-send` to be installed (`libnotify-bin` on Debian/Ubuntu, `libnotify` on Arch). It is installed automatically by `install.sh`.
+
+---
+
 ### Rumble / Force Feedback
 
 Rumble is **enabled by default**. Games that send force-feedback events (most Steam games, `fftest`, etc.) will vibrate the controller's left (strong) and right (weak) motors automatically.
@@ -264,10 +298,12 @@ git pull
 # 2. Re-copy the driver files to the install location
 sudo cp -r scuf_envision /opt/scuf-envision/
 
-# 3. Update udev rules and WirePlumber audio config
+# 3. Update udev rules, WirePlumber audio config, and service file
 sudo cp 99-scuf-envision.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo cp 50-scuf-audio.conf /etc/wireplumber/wireplumber.conf.d/
+sudo cp scuf-envision.service /etc/systemd/system/
+sudo systemctl daemon-reload
 
 # 4. Restart the driver and audio stack
 sudo systemctl restart scuf-envision.service
@@ -631,6 +667,7 @@ scuf-envision-pro-V2-Linux/
     rumble.py                 # Force-feedback: translates FF events to HID rumble packets
     config.py                 # Config file loading/saving (/etc/scuf-envision/config.ini)
     audio_control.py          # USB audio unbind/rebind via sysfs
+    hid.py                    # HID raw interface: battery level polling, keepalive
   tools/
     diag.py                   # Raw event diagnostic tool
     setup_scuf_audio.sh       # Headphone audio setup (WirePlumber software volume)
