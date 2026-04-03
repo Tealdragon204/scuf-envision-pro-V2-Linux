@@ -34,6 +34,9 @@ Physical SCUF Controller (broken mapping)
   Games & Steam            Rumble/Force Feedback
   see a normal             Game -> FF_RUMBLE -> hidraw
   Xbox controller          -> controller motors vibrate
+
+  Separately, via hidraw control interface:
+  Battery level polling -> desktop notifications (configurable thresholds)
 ```
 
 ---
@@ -123,6 +126,39 @@ Log out and back in for this to take effect.
 2. Find the SCUF Envision Pro entry (if listed) and disable it
 3. The virtual "SCUF Envision Pro V2 (Xbox Mode)" controller should be listed as an Xbox controller
 
+### Battery Monitoring
+
+The driver reads battery level from the controller's HID interface and sends desktop notifications when the charge falls below configurable thresholds. This works for both wired and wireless connections.
+
+**Default thresholds:** 20%, 10%, 5%, 1%
+
+Each threshold fires once per session and resets automatically if the battery recovers above it. Only the most severe breached threshold notifies at any given time — if you connect with a dead controller, you get one notification, not four.
+
+> **Note:** Readings for the first ~90 seconds after connecting are suppressed from notifications. The controller's battery management chip needs time to converge its state-of-charge estimate; initial readings can be misleadingly low (3–6%) before settling to the correct value.
+
+**Configure thresholds or disable notifications** in `/etc/scuf-envision/config.ini`:
+
+```ini
+[battery]
+# Comma-separated percentages. Each fires once, resets on recovery.
+notify_thresholds = 20,10,5,1
+
+# Set to false to disable all low-battery notifications.
+notifications = true
+```
+
+Restart after editing:
+```bash
+sudo systemctl restart scuf-envision
+```
+
+**Check current battery level** via service logs:
+```bash
+journalctl -u scuf-envision.service -e | grep -i battery
+```
+
+---
+
 ### Disable SCUF Audio Entirely (Optional)
 
 If you don't use the controller's headphone jack at all and want to remove it from your audio device list completely:
@@ -204,6 +240,17 @@ Then restart the service:
 sudo systemctl restart scuf-envision
 ```
 When disabled, the virtual gamepad won't advertise force-feedback capability, so games will never send rumble events.
+
+### Driver Poll Timeout (Advanced)
+
+The event loop defaults to a 2 ms poll timeout, matching the controller's 500 Hz report rate. This does **not** affect input latency during gameplay — the driver wakes immediately on each hardware event. The timeout only controls how quickly the driver notices idle conditions (wireless disconnect, shutdown).
+
+To reduce idle CPU use on battery-powered systems, increase it in `/etc/scuf-envision/config.ini`:
+
+```ini
+[driver]
+poll_timeout_ms = 8
+```
 
 ---
 
@@ -631,6 +678,7 @@ scuf-envision-pro-V2-Linux/
     rumble.py                 # Force-feedback: translates FF events to HID rumble packets
     config.py                 # Config file loading/saving (/etc/scuf-envision/config.ini)
     audio_control.py          # USB audio unbind/rebind via sysfs
+    hid.py                    # HID raw interface: battery level polling + low-battery notifications
   tools/
     diag.py                   # Raw event diagnostic tool
     setup_scuf_audio.sh       # Headphone audio setup (WirePlumber software volume)
