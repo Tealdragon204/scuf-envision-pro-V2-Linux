@@ -25,6 +25,7 @@ _ENDPOINT_WIRELESS = 0x09
 
 _KEEPALIVE_INTERVAL  = 20.0   # seconds — matches OLH heartbeat
 _BATTERY_INTERVAL    = 60.0   # seconds — re-poll battery level
+_WARMUP_SECS         = 90.0   # BMS needs ~90s to converge SoC after connect
 
 
 def _notify(title: str, body: str, urgency: str = "normal") -> None:
@@ -140,6 +141,8 @@ class BatteryReader:
         self._thresholds: list[int] = sorted(notify_thresholds or [], reverse=True)
         self._notified: set[int] = set()
         self._prev_level = -1
+        self._connect_time: float = 0.0
+        self._stable: bool = False
 
     @property
     def level(self) -> int:
@@ -149,6 +152,8 @@ class BatteryReader:
     def start(self):
         """Open hidraw, init software mode, request battery, start read loop."""
         self._fd = os.open(self._path, os.O_RDWR)
+        self._connect_time = time.monotonic()
+        self._stable = False
 
         # Required before battery or any other query (OLH step 2 in Connect())
         os.write(self._fd, _packet(self._endpoint, _CMD_SOFTWARE_MODE))
@@ -171,45 +176,61 @@ class BatteryReader:
                 and data[2] == 0x01
                 and data[3] == 0x0f):
             val = struct.unpack_from('<H', data, 5)[0] // 10
-        # Direct query response: battery at [4:6]
-        elif len(data) >= 6:
+        # Direct query response: data[3] must echo the battery command byte (0x0f)
+        # to reject unrelated HID reports (button presses, etc.) that share the fd.
+        elif len(data) >= 6 and data[3] == 0x0f:
             candidate = struct.unpack_from('<H', data, 4)[0] // 10
             if 0 < candidate <= 100:
                 val = candidate
 
         if val > 0:
+            warmup = not self._stable and (time.monotonic() - self._connect_time) < _WARMUP_SECS
             if val != self._level:
                 self._level = val
-                log.info("Battery update: %d%%", val)
+                log.info("Battery update%s: %d%%", " (warmup)" if warmup else "", val)
             else:
                 log.info("Battery poll: %d%% (unchanged)", val)
-            self._check_thresholds(val)
+            self._check_thresholds(val, suppress=warmup)
 
-    def _check_thresholds(self, level: int) -> None:
+    def _check_thresholds(self, level: int, suppress: bool = False) -> None:
         """Fire a notification when crossing a threshold downward.
 
-        On the first reading, fires for any threshold already breached (battery
-        state unknown at startup). On subsequent reads, fires only at the moment
-        of crossing (prev > threshold >= current). Resets silently on recovery.
+        During the BMS warmup window (suppress=True), thresholds are tracked but
+        not fired — the BMS SoC estimate is unreliable for ~90s after connect.
+        On the first non-suppressed call, fires for any threshold already breached.
+        On subsequent reads, fires only at the moment of crossing
+        (prev > threshold >= current). Resets silently on recovery.
         """
-        first = self._prev_level < 0
+        first_stable = not self._stable and not suppress
+        if first_stable:
+            self._stable = True
+
+        # prev_level for crossing logic: treat first stable reading like "first ever"
+        # so we catch any threshold the battery has already dipped below
+        effective_prev = -1 if first_stable else self._prev_level
+
+        newly_breached = []
         for t in self._thresholds:
             if level > t:
                 self._notified.discard(t)
-            elif t not in self._notified and (first or self._prev_level > t):
+            elif not suppress and t not in self._notified and (effective_prev < 0 or effective_prev > t):
                 self._notified.add(t)
-                if t == 1:
-                    body = f"Battery below {t}% ({level}%) — controller will shut off soon!"
-                elif t <= 5:
-                    body = f"Battery below {t}% ({level}%) — plug in soon."
-                else:
-                    body = f"Battery below {t}% (currently {level}%)."
-                log.info("Low battery notification: %d%% (threshold %d%%)", level, t)
-                threading.Thread(
-                    target=_notify,
-                    args=("SCUF Controller Battery Low", body, "normal"),
-                    daemon=True,
-                ).start()
+                newly_breached.append(t)
+
+        if newly_breached:
+            t = min(newly_breached)  # most severe threshold only
+            if t == 1:
+                body = f"Battery below {t}% ({level}%) — controller will shut off soon!"
+            elif t <= 5:
+                body = f"Battery below {t}% ({level}%) — plug in soon."
+            else:
+                body = f"Battery below {t}% (currently {level}%)."
+            log.info("Low battery notification: %d%% (threshold %d%%)", level, t)
+            threading.Thread(
+                target=_notify,
+                args=("SCUF Controller Battery Low", body, "normal"),
+                daemon=True,
+            ).start()
         self._prev_level = level
 
     def _read_loop(self):
