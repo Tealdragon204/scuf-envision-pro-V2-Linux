@@ -331,13 +331,10 @@ class BridgeService:
         self._raw_left_x = self._raw_left_y = 0
         self._raw_right_x = self._raw_right_y = 0
 
-    def _wait_for_reconnect(self, poll_interval: float = 2.0,
-                             max_wait: float = 300.0) -> bool:
-        """Poll for the controller to reappear. Returns True if reconnected."""
-        waited = 0.0
-        while self._running and waited < max_wait:
+    def _wait_for_reconnect(self, poll_interval: float = 2.0) -> bool:
+        """Poll indefinitely for the controller to reappear. Returns True if reconnected."""
+        while self._running:
             time.sleep(poll_interval)
-            waited += poll_interval
             discovered = discover_scuf()
             if discovered is not None:
                 self.discovered = discovered
@@ -375,9 +372,6 @@ class BridgeService:
                     return True
                 except OSError as e:
                     log.warning(f"Device found but failed to open: {e}")
-                    continue
-        if waited >= max_wait:
-            log.warning(f"Reconnection timeout ({max_wait:.0f}s), giving up.")
         return False
 
     def _signal_handler(self, signum, frame):
