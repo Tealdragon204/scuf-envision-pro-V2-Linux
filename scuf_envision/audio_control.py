@@ -11,7 +11,10 @@ Requires root (writes to /sys/bus/usb/drivers/snd-usb-audio/{unbind,bind}).
 import glob
 import logging
 import os
+import subprocess
+import time
 from pathlib import Path
+import pwd
 
 from .constants import SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER
 
@@ -150,6 +153,48 @@ def rebind_scuf_audio():
     return count
 
 
+def restart_pipewire_services():
+    """
+    Restart WirePlumber for all active user sessions so the soft-mixer rules
+    from 50-scuf-audio.conf are re-applied to the newly-bound SCUF audio device.
+
+    Active sessions are identified by the presence of a D-Bus socket at
+    /run/user/<uid>/bus. Runs systemctl as the session owner so --user targets
+    the correct instance.
+    """
+    restarted = []
+    for uid_dir in Path("/run/user").iterdir():
+        try:
+            uid = int(uid_dir.name)
+        except ValueError:
+            continue
+        if not (uid_dir / "bus").exists():
+            continue
+        try:
+            pw = pwd.getpwuid(uid)
+        except KeyError:
+            continue
+        env = {
+            "XDG_RUNTIME_DIR": str(uid_dir),
+            "DBUS_SESSION_BUS_ADDRESS": f"unix:path={uid_dir}/bus",
+            "HOME": pw.pw_dir,
+            "PATH": "/usr/bin:/bin",
+        }
+        result = subprocess.run(
+            ["systemctl", "--user", "restart", "wireplumber"],
+            env=env, user=uid, timeout=15,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            restarted.append(pw.pw_name)
+        else:
+            log.warning("WirePlumber restart failed for uid %d: %s",
+                        uid, result.stderr.decode().strip())
+
+    if restarted:
+        log.info("Restarted WirePlumber for user(s): %s", ", ".join(restarted))
+
+
 def apply_audio_config():
     """
     Read config and apply the audio disabled/enabled state.
@@ -168,3 +213,5 @@ def apply_audio_config():
         n = rebind_scuf_audio()
         if n > 0:
             log.info("Audio enabled: rebound %d SCUF audio interface(s)", n)
+            time.sleep(1)  # let kernel driver settle before WirePlumber rescans
+            restart_pipewire_services()
