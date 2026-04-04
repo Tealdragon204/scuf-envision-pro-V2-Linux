@@ -213,5 +213,5 @@ def apply_audio_config():
         n = rebind_scuf_audio()
         if n > 0:
             log.info("Audio enabled: rebound %d SCUF audio interface(s)", n)
-            time.sleep(1)  # let kernel driver settle before WirePlumber rescans
-            restart_pipewire_services()
+        time.sleep(1)  # let kernel driver settle before WirePlumber rescans
+        restart_pipewire_services()
