@@ -13,27 +13,29 @@ Additionally, the controller's USB audio has two problems: the hardware mixer de
 ## How It Works
 
 ```
-Physical SCUF Controller (broken mapping)
+Physical SCUF Controller (VID 1b1c, PID 3a05 wired / 3a08 wireless)
         |
-        v
-  Auto-detection (sysfs VID:PID scan)
+        +--- evdev interface (/dev/input/eventN)
+        |           |
+        |     Auto-detection (sysfs VID:PID scan)
+        |           |
+        |     Exclusive grab (prevents double-input)
+        |           |
+        |     Button/Axis remapping (SCUF -> Xbox standard)
+        |           |
+        |     Deadzone & jitter filtering
+        |           |
+        |     Virtual Xbox Gamepad (via uinput)
+        |           |
+        |     Games & Steam see a normal Xbox controller
         |
-        v
-  Exclusive grab (prevents double-input)
-        |
-        v
-  Button/Axis remapping (SCUF -> Xbox standard)
-        |
-        v
-  Deadzone & jitter filtering
-        |
-        v
-  Virtual Xbox Gamepad (via uinput)
-        |                          ^
-        v                          |
-  Games & Steam            Rumble/Force Feedback
-  see a normal             Game -> FF_RUMBLE -> hidraw
-  Xbox controller          -> controller motors vibrate
+        +--- HID raw interface (/dev/hidrawN)
+                    |
+                    +-- Battery polling (every 60s) -> desktop notifications
+                    |
+                    +-- Rumble: game FF_RUMBLE events -> HID motor packet
+                    |
+                    +-- Keepalive (every 20s, wireless)
 ```
 
 ---
@@ -60,12 +62,13 @@ sudo bash install.sh
 ```
 
 This does everything automatically:
-- Installs `python-evdev` (the only dependency)
+- Installs dependencies: `python-evdev` (input handling) and `libnotify` (battery notifications)
 - Loads the `uinput` kernel module (persists across reboots)
-- Installs udev rules (device permissions)
+- Installs udev rules (device permissions + hardware mixer init on plug)
 - Copies the driver to `/opt/scuf-envision`
 - Installs default config to `/etc/scuf-envision/config.ini`
 - Installs the `scuf-audio-toggle` tool
+- Sets `SDL_GAMECONTROLLER_IGNORE_DEVICES` so Steam/SDL ignores the raw SCUF device
 - Installs and starts the systemd service (auto-starts on boot)
 - Installs the WirePlumber audio fix (headphone volume)
 
@@ -679,6 +682,25 @@ scuf-envision-pro-V2-Linux/
   install.sh                  # Automated installer
   uninstall.sh                # Automated uninstaller
 ```
+
+## Planned Features
+
+The driver is functional and stable. These features are in the pipeline, roughly in order:
+
+| Phase | Feature |
+|---|---|
+| 11 | **Named profiles + per-game launch integration** — `--profile BIOSHOCK` in your game's launch options loads a custom button map; `scuf-ctl` CLI for runtime switching; `scuf-profile` wrapper restores the default profile when the game exits (including force-quit) |
+| 12 | **RGB control** — configure controller LED colour via config |
+| 13 | **Vibration passthrough** — expose full haptic control to games |
+| 14 | **Trigger configuration** — per-trigger deadzone and response curve |
+| 15 | **Tray app** — system tray icon for quick profile/audio/rumble switching |
+| 16 | **Layers** — multiple button maps per profile; switch layers by holding a paddle; desktop notification shows the active layer name |
+| 17 | **Macros** — bind a button to a sequence of inputs with optional delays |
+| 18 | **Desktop layer** — a persistent base layer active across all profiles for window switching, media keys, etc. |
+| 19 | **On-screen keyboard** — invoke the system OSK from a button bind *(blocked: waiting on xdg-desktop-portal gamepad input portal)* |
+| 20 | **DS4 / DualSense emulation** — optional alternative virtual device target; shows PlayStation button prompts in games |
+
+---
 
 ## Credits
 
