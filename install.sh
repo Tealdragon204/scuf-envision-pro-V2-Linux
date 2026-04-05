@@ -31,8 +31,14 @@ else
     echo "  pip install evdev"
 fi
 
-# Ensure 'input' group exists (safety net for minimal installs; usually pre-exists)
+# Ensure 'input' group exists and the invoking user is a member
 getent group input &>/dev/null || groupadd --system input
+if [ -n "$SUDO_USER" ] && id "$SUDO_USER" &>/dev/null; then
+    if ! id -nG "$SUDO_USER" | grep -qw input; then
+        usermod -aG input "$SUDO_USER"
+        echo "  Added $SUDO_USER to 'input' group — re-login required for scuf-ctl without sudo"
+    fi
+fi
 
 # Step 2: Load uinput module
 echo "[2/8] Loading uinput kernel module..."
