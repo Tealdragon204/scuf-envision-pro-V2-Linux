@@ -294,26 +294,14 @@ sudo /opt/scuf-envision/tools/scuf-audio-toggle status
 
 ## Updating
 
+The safest way to update is to re-run the installer — it's idempotent and handles everything (driver files, tools, symlinks, service, udev rules):
+
 ```bash
-# 1. Pull the latest changes
 git pull
-
-# 2. Re-copy the driver files to the install location
-sudo cp -r scuf_envision /opt/scuf-envision/
-
-# 3. Update udev rules, WirePlumber audio config, and service file
-sudo cp 99-scuf-envision.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules
-sudo cp 50-scuf-audio.conf /etc/wireplumber/wireplumber.conf.d/
-sudo cp scuf-envision.service /etc/systemd/system/
-sudo systemctl daemon-reload
-
-# 4. Restart the driver and audio stack
-sudo systemctl restart scuf-envision.service
-systemctl --user restart wireplumber pipewire pipewire-pulse
+sudo bash install.sh
 ```
 
-Then replug the controller (or run `sudo bash tools/setup_scuf_audio.sh`) so the updated udev rule fires and sets the ALSA mixer level.
+Then replug the controller so the updated udev rule fires and sets the ALSA mixer level.
 
 Verify the update took effect:
 
@@ -357,10 +345,10 @@ sudo rm -f /etc/systemd/system/scuf-envision.service
 sudo systemctl daemon-reload
 ```
 
-**Step 3: Remove driver files and CLI tool**
+**Step 3: Remove driver files and CLI tools**
 
 ```bash
-sudo rm -f /usr/local/bin/scuf-audio-toggle
+sudo rm -f /usr/local/bin/scuf-audio-toggle /usr/local/bin/scuf-ctl /usr/local/bin/scuf-profile
 sudo rm -rf /opt/scuf-envision
 ```
 
@@ -438,8 +426,8 @@ sudo systemctl disable scuf-envision.service 2>/dev/null; true
 sudo rm -f /etc/systemd/system/scuf-envision.service
 sudo systemctl daemon-reload
 
-# Remove CLI tool and installed driver files
-sudo rm -f /usr/local/bin/scuf-audio-toggle
+# Remove CLI tools and installed driver files
+sudo rm -f /usr/local/bin/scuf-audio-toggle /usr/local/bin/scuf-ctl /usr/local/bin/scuf-profile
 sudo rm -rf /opt/scuf-envision
 
 # Remove all udev rules and audio configs
@@ -689,7 +677,6 @@ The driver is functional and stable. These features are in the pipeline, roughly
 
 | Phase | Feature |
 |---|---|
-| 11 | **Named profiles + per-game launch integration** — `--profile BIOSHOCK` in your game's launch options loads a custom button map; `scuf-ctl` CLI for runtime switching; `scuf-profile` wrapper restores the default profile when the game exits (including force-quit) |
 | 12 | **RGB control** — configure controller LED colour via config |
 | 13 | **Vibration passthrough** — expose full haptic control to games |
 | 14 | **Trigger configuration** — per-trigger deadzone and response curve |
