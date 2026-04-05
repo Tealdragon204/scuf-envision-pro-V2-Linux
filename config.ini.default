@@ -39,3 +39,57 @@ notify_thresholds = 20,10,5,1
 # Increase (e.g. 8) to reduce idle CPU use on battery-powered systems.
 # To apply after editing: sudo systemctl restart scuf-envision
 poll_timeout_ms = 2
+
+# ---------------------------------------------------------------------------
+# Named profiles — per-game button remapping
+# ---------------------------------------------------------------------------
+# Each profile is a [profile.NAME] section. NAME is a short identifier with
+# no spaces (e.g. BIOSHOCK, NINTENDO_LAYOUT, RACING).
+#
+# Keys are the raw physical evdev code names the SCUF hardware sends.
+# Values are the virtual Xbox evdev code names games receive.
+# Any button not listed uses the default hardware mapping.
+# Profiles are switched live — no service restart needed.
+#
+# Physical button codes (what the SCUF hardware actually sends):
+#   BTN_SOUTH           = A button (correct)
+#   BTN_EAST            = B button (correct)
+#   BTN_C               = X button (SCUF quirk — not BTN_NORTH)
+#   BTN_NORTH           = Y button (SCUF quirk — not BTN_WEST)
+#   BTN_WEST            = LB bumper (SCUF quirk)
+#   BTN_Z               = RB bumper (SCUF quirk)
+#   BTN_TL              = Select / Back (SCUF quirk)
+#   BTN_TR              = Start / Menu (SCUF quirk)
+#   BTN_TL2             = L3 — left stick click (SCUF quirk)
+#   BTN_TR2             = R3 — right stick click (SCUF quirk)
+#   BTN_MODE            = Guide / Xbox button
+#   BTN_TRIGGER_HAPPY1  = Paddle 1
+#   BTN_TRIGGER_HAPPY2  = Paddle 2
+#   BTN_TRIGGER_HAPPY3  = Paddle 3
+#
+# Virtual output codes (what games see after remapping):
+#   BTN_SOUTH  = A    BTN_NORTH  = X    BTN_TL    = LB    BTN_SELECT  = Back
+#   BTN_EAST   = B    BTN_WEST   = Y    BTN_TR    = RB    BTN_START   = Start
+#   BTN_THUMBL = L3   BTN_THUMBR = R3   BTN_MODE  = Guide
+#   BTN_TRIGGER_HAPPY1/2/3 = Paddles (pass-through)
+#
+# Run 'scuf-ctl status' to see the active profile.
+# Run 'scuf-ctl profile NAME' to switch profiles without restarting.
+#
+# Steam / Heroic launch option syntax:
+#   scuf-profile BIOSHOCK %command%
+#
+# ---------------------------------------------------------------------------
+# Example: map paddles to face buttons
+# ---------------------------------------------------------------------------
+# [profile.BIOSHOCK]
+# BTN_TRIGGER_HAPPY1 = BTN_SOUTH
+# BTN_TRIGGER_HAPPY2 = BTN_EAST
+# BTN_TRIGGER_HAPPY3 = BTN_NORTH
+#
+# ---------------------------------------------------------------------------
+# Example: swap A and B (Nintendo button layout muscle memory)
+# ---------------------------------------------------------------------------
+# [profile.NINTENDO_LAYOUT]
+# BTN_SOUTH = BTN_EAST
+# BTN_EAST  = BTN_SOUTH

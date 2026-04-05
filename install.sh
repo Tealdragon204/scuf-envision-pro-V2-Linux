@@ -18,18 +18,21 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Step 1: Install python-evdev
+# Step 1: Install dependencies
 echo "[1/8] Installing dependencies..."
 if command -v pacman &>/dev/null; then
-    pacman -S --noconfirm --needed python-evdev
+    pacman -S --noconfirm --needed python-evdev libnotify
 elif command -v apt &>/dev/null; then
-    apt install -y python3-evdev
+    apt install -y python3-evdev libnotify-bin
 elif command -v dnf &>/dev/null; then
-    dnf install -y python3-evdev
+    dnf install -y python3-evdev libnotify
 else
-    echo "Unknown package manager. Please install python-evdev manually."
+    echo "Unknown package manager. Please install python-evdev and libnotify manually."
     echo "  pip install evdev"
 fi
+
+# Ensure 'input' group exists (safety net for minimal installs; usually pre-exists)
+getent group input &>/dev/null || groupadd --system input
 
 # Step 2: Load uinput module
 echo "[2/8] Loading uinput kernel module..."
@@ -53,9 +56,13 @@ cp -r "$SCRIPT_DIR/scuf_envision" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/tools" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/uninstall.sh" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/tools/scuf-audio-toggle"
+chmod +x "$INSTALL_DIR/tools/scuf-ctl"
+chmod +x "$INSTALL_DIR/tools/scuf-profile"
 ln -sf "$INSTALL_DIR/tools/scuf-audio-toggle" /usr/local/bin/scuf-audio-toggle
+ln -sf "$INSTALL_DIR/tools/scuf-ctl"          /usr/local/bin/scuf-ctl
+ln -sf "$INSTALL_DIR/tools/scuf-profile"      /usr/local/bin/scuf-profile
 echo "  Installed to $INSTALL_DIR"
-echo "  Installed scuf-audio-toggle to /usr/local/bin/"
+echo "  Installed scuf-audio-toggle, scuf-ctl, scuf-profile to /usr/local/bin/"
 
 # Step 5: Install default config
 echo "[5/8] Installing default config..."
@@ -141,6 +148,20 @@ echo "  sudo $INSTALL_DIR/tools/scuf-audio-toggle status"
 echo ""
 echo "  # Uninstall:"
 echo "  sudo bash $INSTALL_DIR/uninstall.sh"
+echo ""
+echo "Per-game profiles (add to game's launch options in Steam/Heroic):"
+echo ""
+echo "  scuf-profile PROFILENAME %command%"
+echo ""
+echo "  Profile switching (no restart needed):"
+echo "  scuf-ctl ping                  # check driver is running"
+echo "  scuf-ctl status                # show active profile + device info"
+echo "  scuf-ctl profile PROFILENAME   # switch profile"
+echo "  scuf-ctl profile default       # restore default"
+echo ""
+echo "  Define profiles in /etc/scuf-envision/config.ini:"
+echo "  [profile.BIOSHOCK]"
+echo "  BTN_TRIGGER_HAPPY1 = BTN_SOUTH"
 echo ""
 echo "Steam users: set this environment variable to prevent double input:"
 echo ""

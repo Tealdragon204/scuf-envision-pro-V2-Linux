@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""
+scuf-ctl — IPC client for the SCUF Envision Pro V2 driver.
+
+Usage:
+    scuf-ctl ping              Check if driver is running
+    scuf-ctl status            Show driver status (profile, device, rumble, PID)
+    scuf-ctl profile NAME      Switch to a named profile (live, no restart)
+    scuf-ctl profile default   Restore default profile
+"""
+
+import json
+import socket
+import sys
+
+SOCKET_PATH = "/run/scuf-envision/ipc.sock"
+
+
+def send_command(cmd: str) -> str:
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.connect(SOCKET_PATH)
+            s.sendall((cmd + "\n").encode())
+            chunks = []
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            return b"".join(chunks).decode().strip()
+    except FileNotFoundError:
+        print(f"error: driver not running (socket not found at {SOCKET_PATH})", file=sys.stderr)
+        sys.exit(1)
+    except ConnectionRefusedError:
+        print("error: driver not responding", file=sys.stderr)
+        sys.exit(1)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__)
+        sys.exit(1)
+
+    cmd = args[0]
+
+    if cmd == "ping":
+        print(send_command("ping"))
+
+    elif cmd == "status":
+        raw = send_command("status")
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            print(raw)
+            return
+        print(f"Profile:    {data.get('profile', '?')}")
+        profiles = data.get('profiles', [])
+        print(f"Profiles:   {', '.join(profiles) if profiles else 'none'}")
+        print(f"Device:     {data.get('device', '?')} ({data.get('connection', '?')})")
+        print(f"Rumble:     {'yes' if data.get('rumble') else 'no'}")
+        print(f"Driver PID: {data.get('pid', '?')}")
+        print(f"Version:    {data.get('driver_version', '?')}")
+
+    elif cmd == "profile":
+        if len(args) < 2:
+            print("usage: scuf-ctl profile NAME", file=sys.stderr)
+            sys.exit(1)
+        name = args[1]
+        resp = send_command(f"profile {name}")
+        if resp.startswith("error:"):
+            print(resp, file=sys.stderr)
+            sys.exit(1)
+        print(f"Profile set to: {name}")
+
+    else:
+        print(f"error: unknown command '{cmd}'", file=sys.stderr)
+        print("Run 'scuf-ctl' with no arguments for usage.", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

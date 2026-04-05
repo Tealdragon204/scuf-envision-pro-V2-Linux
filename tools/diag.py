@@ -281,6 +281,18 @@ def main():
         print("NOTE: The SCUF bridge driver is currently running.")
         print(f"  Virtual device: {virtual_dev.path} ({virtual_dev.name})")
         print()
+        # Show active profile from IPC if available
+        try:
+            import subprocess, json
+            raw = subprocess.check_output(["scuf-ctl", "status"], timeout=2)
+            data = json.loads(raw)
+            print(f"  Active profile: {data.get('profile', 'default')}")
+            profiles = data.get("profiles", [])
+            if len(profiles) > 1:
+                print(f"  Available:      {', '.join(profiles)}")
+            print()
+        except Exception:
+            pass
         print("The bridge has exclusive access to the physical controller,")
         print("so raw events will not appear here. Switching to virtual")
         print("device mode to show the bridge's remapped output instead.")
