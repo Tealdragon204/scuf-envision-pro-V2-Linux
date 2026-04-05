@@ -80,7 +80,8 @@ fi
 echo "[6/8] Installing and enabling systemd service..."
 cp "$SCRIPT_DIR/scuf-envision.service" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now scuf-envision.service
+systemctl enable scuf-envision.service
+systemctl restart scuf-envision.service
 echo "  Service installed, enabled at boot, and started"
 
 # Step 7: Install audio config
