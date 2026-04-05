@@ -35,9 +35,9 @@ Physical SCUF Controller (VID 1b1c, PID 3a05 wired / 3a08 wireless)
         │    ├── constants.py ── remap tables
         │    └── virtual_gamepad.py ── uinput ──► Virtual Xbox controller ──► Games
         │
-        └─── HID raw interface (/dev/hidrawN) ← Phase 9+
+        └─── HID raw interface (/dev/hidrawN)
                   │
-            hid.py (future) ── battery, RGB, vibration, trigger config
+            hid.py ── battery, RGB, vibration, trigger config
 ```
 
 `config.py` is read at startup. `audio_control.py` handles USB audio bind/unbind
@@ -85,19 +85,17 @@ up to 5 min while waiting for controller reconnection.
      and `api.alsa.soft-mixer/soft-vol = true`. The `device.name` key must match the
      user's serial number — it cannot be hardcoded. `install.sh` must discover it at
      install time via `pactl list sinks`.
-  Both fixes must be applied. Phase 4 only implemented #2 (approximately). Phase 8
-  completes both properly, for wired and wireless separately.
+  Both fixes are applied by the installer. Phase 4 implemented #2 (approximately);
+  Phase 8 completed both properly for wired and wireless.
 
 - **OpenLinkHub creates a competing virtual gamepad** — OLH registers its own HID
-  gamepad for the SCUF. To coexist, OLH's virtual gamepad must be disabled. Our
-  exclusive evdev grab handles the raw device side, but OLH's gamepad runs at the
-  HID layer independently. Phase 10 resolves this.
+  gamepad for the SCUF. Our exclusive evdev grab handles the raw device side; the
+  HID-layer conflict is resolved in Phase 10 via `bridge.py` and `discovery.py`.
 
 - **HID raw interface needed for non-evdev features** — battery, RGB, vibration,
   and trigger configuration all require sending/receiving HID reports via
-  `/dev/hidrawN`, not the evdev interface. Phase 9+ adds `hid.py` for this.
-  The hidraw node for the SCUF is identified by VID:PID via sysfs (same discovery
-  pattern as evdev in `discovery.py`).
+  `/dev/hidrawN`, not the evdev interface. `hid.py` handles this; the hidraw node
+  is identified by VID:PID via sysfs (same discovery pattern as evdev).
 
 - **uinput module must be loaded** — `modprobe uinput` at runtime, persisted via
   `/etc/modules-load.d/uinput.conf`. Installer handles this; manual runs need it
@@ -129,10 +127,12 @@ up to 5 min while waiting for controller reconnection.
 | `scuf_envision/virtual_gamepad.py` | Creates and manages virtual Xbox controller via uinput |
 | `scuf_envision/config.py` | Loads `/etc/scuf-envision/config.ini`; typed config dataclass |
 | `scuf_envision/audio_control.py` | USB audio interface bind/unbind via sysfs; persists state to config |
-| `scuf_envision/hid.py` | (Phase 9+) HID raw interface: battery, RGB, vibration, trigger config |
+| `scuf_envision/hid.py` | HID raw interface: battery, RGB, vibration, trigger config |
 | `tools/diag.py` | Raw event diagnostic: prints SCUF→Xbox remapping live; Ctrl-C to exit |
 | `tools/setup_scuf_audio.sh` | Audio fix: amixer numid=8 32,32 + serial-aware WirePlumber ACP config |
 | `tools/scuf-audio-toggle` | CLI: `disable` / `enable` / `status` for SCUF USB audio interface |
+| `tools/scuf-ctl` | (Phase 11) CLI: send IPC commands to running driver (e.g. `profile <name>`) |
+| `tools/scuf-profile` | (Phase 11) Launch wrapper: switches profile on game start, restores default on exit/force-quit |
 | `tools/tray.py` | (Phase 15) System tray app |
 | `50-scuf-audio.conf` | WirePlumber config template: forces software volume on SCUF headset mixer |
 | `99-scuf-envision.rules` | udev rules: grants non-root access to SCUF evdev + hidraw nodes |
