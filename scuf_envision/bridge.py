@@ -3,13 +3,17 @@ Main bridge service: reads from physical SCUF, remaps, writes to virtual Xbox ga
 
 This is the core event loop that:
 1. Opens the physical SCUF evdev device with exclusive grab
-2. Reads input events at ~250 Hz
-3. Translates non-standard SCUF codes to standard Xbox codes
+2. Reads input events at ~500 Hz
+3. Translates non-standard SCUF codes to standard Xbox codes via the active profile
 4. Applies deadzone and jitter filtering
 5. Writes to the virtual uinput gamepad
+
+Profile switching and driver status are available at runtime via the IPC socket
+at /run/scuf-envision/ipc.sock (see ipc.py, tools/scuf-ctl).
 """
 
 import logging
+import os
 import select
 import signal
 import sys
@@ -18,17 +22,17 @@ import time
 import evdev
 from evdev import ecodes
 
-from .constants import BUTTON_MAP, PADDLE_MAP, AXIS_MAP
-from .config import poll_timeout_ms as _poll_timeout_ms
+from .config import load_config, poll_timeout_ms as _poll_timeout_ms
 from .discovery import DiscoveredDevice, discover_scuf, discover_scuf_with_retry, find_competing_gamepads
 from .input_filter import InputFilter
+from .ipc import IPCServer
+from .profile import ProfileManager
 from .virtual_gamepad import VirtualGamepad
 
 log = logging.getLogger(__name__)
 
 
 class _DeviceDisconnected(Exception):
-    """Raised when the physical device is lost."""
     pass
 
 
@@ -36,22 +40,25 @@ class BridgeService:
     """Bridges the physical SCUF controller to a virtual Xbox gamepad."""
 
     def __init__(self, discovered: DiscoveredDevice, filter_config: dict = None,
-                 reconnect: bool = False, rumble_enabled: bool = False):
+                 reconnect: bool = False, rumble_enabled: bool = False,
+                 initial_profile: str | None = None):
         self.discovered = discovered
         self.filter = InputFilter(**(filter_config or {}))
         self.gamepad = VirtualGamepad()
         self._reconnect = reconnect
         self._rumble_enabled = rumble_enabled
-        self._rumble = None  # RumbleHandler, created in start()
-        self._ff_effects = {}  # id -> (strong_magnitude, weak_magnitude)
-        self._ff_gain = 65535  # FF_GAIN: global rumble intensity (0-65535)
+        self._initial_profile = initial_profile
+        self._rumble = None
+        self._ff_effects = {}
+        self._ff_gain = 65535
 
         self._battery = None
         self._physical = None
         self._grabbed_devices = []
         self._running = False
+        self._profile: ProfileManager | None = None
+        self._ipc: IPCServer | None = None
 
-        # Raw stick state for radial deadzone (need both X/Y together)
         self._raw_left_x = 0
         self._raw_left_y = 0
         self._raw_right_x = 0
@@ -59,18 +66,19 @@ class BridgeService:
 
     def start(self):
         """Open devices and start the event loop."""
-        # Set up signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
         self._running = True
         try:
             self.gamepad.create(rumble=self._rumble_enabled)
+
             if self._rumble_enabled and self.discovered.hidraw_path:
                 from .rumble import RumbleHandler, init_vibration_modules
                 if self.discovered.control_hidraw_path:
                     init_vibration_modules(self.discovered.control_hidraw_path)
                 self._rumble = RumbleHandler(self.discovered.hidraw_path)
+
             if self.discovered.control_hidraw_path:
                 from .hid import BatteryReader
                 from .config import battery_notifications_enabled, battery_notify_thresholds
@@ -83,19 +91,37 @@ class BridgeService:
                 except OSError as e:
                     log.warning("Battery reader unavailable: %s", e)
                     self._battery = None
+
+            # Load profiles from config
+            config = load_config()
+            self._profile = ProfileManager.from_config(config)
+            if self._initial_profile:
+                try:
+                    self._profile.switch(self._initial_profile)
+                except KeyError:
+                    log.warning("--profile %r not found in config, using default",
+                                self._initial_profile)
+
+            # Start IPC socket
+            try:
+                self._ipc = IPCServer()
+            except OSError as e:
+                log.warning("IPC socket unavailable: %s", e)
+                self._ipc = None
+
             self._open_devices()
             self._suppress_competing_gamepads()
-            log.info("Bridge started - SCUF -> Xbox translation active")
+            log.info("Bridge started — SCUF -> Xbox translation active (profile: %s)",
+                     self._profile.active_name)
             self._run_with_reconnect()
         finally:
             self._cleanup()
 
     def _run_with_reconnect(self):
-        """Run the event loop, with optional reconnection on disconnect."""
         while self._running:
             try:
                 self._event_loop()
-                break  # Clean exit from event loop (shutdown requested)
+                break
             except _DeviceDisconnected:
                 self._release_physical()
                 if not self._reconnect or not self._running:
@@ -107,27 +133,22 @@ class BridgeService:
                 log.info("Controller reconnected!")
 
     def _open_devices(self):
-        """Open the physical controller and grab it exclusively."""
-        log.info(f"Opening physical device: {self.discovered.event_path}")
+        log.info("Opening physical device: %s", self.discovered.event_path)
         self._physical = evdev.InputDevice(self.discovered.event_path)
-
-        # Exclusive grab prevents double input (raw + virtual)
         self._physical.grab()
         self._grabbed_devices.append(self._physical)
-        log.info(f"Exclusively grabbed: {self._physical.name}")
+        log.info("Exclusively grabbed: %s", self._physical.name)
 
-        # Also grab secondary devices to suppress their input leakage
         for sec_path in self.discovered.secondary_event_paths:
             try:
                 sec_dev = evdev.InputDevice(sec_path)
                 sec_dev.grab()
                 self._grabbed_devices.append(sec_dev)
-                log.debug(f"Grabbed secondary: {sec_path}")
+                log.debug("Grabbed secondary: %s", sec_path)
             except (OSError, PermissionError) as e:
-                log.warning(f"Could not grab secondary device {sec_path}: {e}")
+                log.warning("Could not grab secondary device %s: %s", sec_path, e)
 
     def _suppress_competing_gamepads(self):
-        """Grab any competing virtual gamepads (e.g. OLH's) so games don't see them."""
         for path in find_competing_gamepads():
             try:
                 dev = evdev.InputDevice(path)
@@ -149,10 +170,13 @@ class BridgeService:
         poll.register(phys_fd, select.POLLIN)
         timeout = _poll_timeout_ms()
 
-        # Also poll the virtual gamepad's fd for FF upload/erase/play events
         vgpad_fd = self.gamepad.fd if self._rumble else -1
         if vgpad_fd >= 0:
             poll.register(vgpad_fd, select.POLLIN)
+
+        ipc_fd = self._ipc.fileno() if self._ipc else -1
+        if ipc_fd >= 0:
+            poll.register(ipc_fd, select.POLLIN)
 
         while self._running:
             events = poll.poll(timeout)
@@ -166,13 +190,14 @@ class BridgeService:
                             self._handle_event(event)
                     except OSError as e:
                         if self._running:
-                            log.error(f"Device read error: {e}")
+                            log.error("Device read error: %s", e)
                             raise _DeviceDisconnected() from e
                 elif ready_fd == vgpad_fd:
                     self._handle_ff_events()
+                elif ready_fd == ipc_fd:
+                    self._ipc.handle_request(self._profile, self._build_status_state())
 
     def _handle_event(self, event):
-        """Process a single evdev event from the physical controller."""
         if event.type == ecodes.EV_KEY:
             self._handle_button(event)
         elif event.type == ecodes.EV_ABS:
@@ -181,78 +206,55 @@ class BridgeService:
             self.gamepad.syn()
 
     def _handle_button(self, event):
-        """Remap and forward a button event."""
-        code = event.code
-
-        # Check main button map
-        if code in BUTTON_MAP:
-            mapped = BUTTON_MAP[code]
+        """Remap and forward a button event via the active profile's button map."""
+        mapped = self._profile.effective_button_map.get(event.code)
+        if mapped is not None:
             self.gamepad.emit_button(mapped, event.value)
-            return
-
-        # Check paddle map
-        if code in PADDLE_MAP:
-            mapped = PADDLE_MAP[code]
-            self.gamepad.emit_button(mapped, event.value)
-            return
-
-        # Unknown button - log it for debugging
-        if event.value == 1:  # Only log presses, not releases
-            log.debug(f"Unknown button: code=0x{code:03x} ({code}) value={event.value}")
+        elif event.value == 1:
+            log.debug("Unknown button: code=0x%03x (%d)", event.code, event.code)
 
     def _handle_axis(self, event):
-        """Remap and forward an axis event with filtering."""
+        from .constants import AXIS_MAP
         code = event.code
         value = event.value
 
         if code not in AXIS_MAP:
             return
 
-        mapped = AXIS_MAP[code]
-
-        # Track raw stick values for radial deadzone
         if code == ecodes.ABS_X:
             self._raw_left_x = value
             self._emit_filtered_stick("left", self._raw_left_x, self._raw_left_y,
-                                       ecodes.ABS_X, ecodes.ABS_Y)
-            return
+                                      ecodes.ABS_X, ecodes.ABS_Y)
         elif code == ecodes.ABS_Y:
             self._raw_left_y = value
             self._emit_filtered_stick("left", self._raw_left_x, self._raw_left_y,
-                                       ecodes.ABS_X, ecodes.ABS_Y)
-            return
+                                      ecodes.ABS_X, ecodes.ABS_Y)
         elif code == ecodes.ABS_Z:
             # SCUF ABS_Z -> Right Stick X
             self._raw_right_x = value
             self._emit_filtered_stick("right", self._raw_right_x, self._raw_right_y,
-                                       ecodes.ABS_RX, ecodes.ABS_RY)
-            return
+                                      ecodes.ABS_RX, ecodes.ABS_RY)
         elif code == ecodes.ABS_RZ:
             # SCUF ABS_RZ -> Right Stick Y
             self._raw_right_y = value
             self._emit_filtered_stick("right", self._raw_right_x, self._raw_right_y,
-                                       ecodes.ABS_RX, ecodes.ABS_RY)
-            return
+                                      ecodes.ABS_RX, ecodes.ABS_RY)
         elif code == ecodes.ABS_RX:
             # SCUF ABS_RX -> Left Trigger
             filtered = self.filter.filter_trigger(value)
             filtered, changed = self.filter.suppress_jitter("lt", filtered)
             if changed:
                 self.gamepad.emit_axis(ecodes.ABS_Z, filtered)
-            return
         elif code == ecodes.ABS_RY:
             # SCUF ABS_RY -> Right Trigger
             filtered = self.filter.filter_trigger(value)
             filtered, changed = self.filter.suppress_jitter("rt", filtered)
             if changed:
                 self.gamepad.emit_axis(ecodes.ABS_RZ, filtered)
-            return
-
-        # D-pad and anything else: pass through mapped
-        self.gamepad.emit_axis(mapped, value)
+        else:
+            self.gamepad.emit_axis(AXIS_MAP[code], value)
 
     def _handle_ff_events(self):
-        """Handle force-feedback events from games via the virtual gamepad."""
         ui = self.gamepad.uinput
         try:
             for event in ui.read():
@@ -281,7 +283,8 @@ class BridgeService:
                 elif event.type == ecodes.EV_FF:
                     if event.code == ecodes.FF_GAIN:
                         self._ff_gain = max(0, min(65535, event.value))
-                        log.info("FF_GAIN set to %d (%.0f%%)", self._ff_gain, self._ff_gain / 65535 * 100)
+                        log.info("FF_GAIN set to %d (%.0f%%)", self._ff_gain,
+                                 self._ff_gain / 65535 * 100)
                     else:
                         eff = self._ff_effects.get(event.code)
                         if eff and self._rumble:
@@ -299,18 +302,24 @@ class BridgeService:
 
     def _emit_filtered_stick(self, stick_name: str, raw_x: int, raw_y: int,
                               out_x_code: int, out_y_code: int):
-        """Apply radial deadzone and emit filtered stick values."""
         fx, fy = self.filter.filter_stick(raw_x, raw_y)
-
         fx, x_changed = self.filter.suppress_jitter(f"{stick_name}_x", fx)
         fy, y_changed = self.filter.suppress_jitter(f"{stick_name}_y", fy)
-
         if x_changed or y_changed:
             self.gamepad.emit_axis(out_x_code, fx)
             self.gamepad.emit_axis(out_y_code, fy)
 
+    def _build_status_state(self) -> dict:
+        from . import __version__
+        return {
+            "driver_version": __version__,
+            "device": self.discovered.event_path,
+            "connection": self.discovered.connection_type,
+            "rumble": self._rumble_enabled,
+            "pid": os.getpid(),
+        }
+
     def _release_physical(self):
-        """Release physical devices only, keeping the virtual gamepad alive."""
         for dev in self._grabbed_devices:
             try:
                 dev.ungrab()
@@ -321,7 +330,6 @@ class BridgeService:
         self._physical = None
 
     def _zero_virtual_outputs(self):
-        """Zero all stick/trigger axes and stop rumble on disconnect."""
         if self._rumble:
             self._rumble.stop()
         for axis in (ecodes.ABS_X, ecodes.ABS_Y, ecodes.ABS_RX, ecodes.ABS_RY,
@@ -332,56 +340,55 @@ class BridgeService:
         self._raw_right_x = self._raw_right_y = 0
 
     def _wait_for_reconnect(self, poll_interval: float = 2.0) -> bool:
-        """Poll indefinitely for the controller to reappear. Returns True if reconnected."""
         while self._running:
             time.sleep(poll_interval)
             discovered = discover_scuf()
-            if discovered is not None:
-                self.discovered = discovered
+            if discovered is None:
+                continue
+            self.discovered = discovered
+            try:
+                self._open_devices()
+                from .audio_control import apply_audio_config
                 try:
-                    self._open_devices()
-                    # Re-apply audio config on reconnection
-                    from .audio_control import apply_audio_config
-                    try:
-                        apply_audio_config()
-                    except Exception:
-                        pass
-                    # Re-open hidraw for rumble on reconnection
-                    if self._rumble_enabled and discovered.hidraw_path:
-                        from .rumble import RumbleHandler, init_vibration_modules
-                        if self._rumble:
-                            self._rumble.close()
-                        if discovered.control_hidraw_path:
-                            init_vibration_modules(discovered.control_hidraw_path)
-                        self._rumble = RumbleHandler(discovered.hidraw_path)
-                    if self._battery:
-                        self._battery.close()
-                        self._battery = None
+                    apply_audio_config()
+                except Exception:
+                    pass
+                if self._rumble_enabled and discovered.hidraw_path:
+                    from .rumble import RumbleHandler, init_vibration_modules
+                    if self._rumble:
+                        self._rumble.close()
                     if discovered.control_hidraw_path:
-                        from .hid import BatteryReader
-                        from .config import battery_notifications_enabled, battery_notify_thresholds
-                        thresholds = battery_notify_thresholds() if battery_notifications_enabled() else []
-                        self._battery = BatteryReader(discovered.control_hidraw_path,
-                                                      discovered.connection_type,
-                                                      notify_thresholds=thresholds)
-                        try:
-                            self._battery.start()
-                        except OSError as e:
-                            log.warning("Battery reader unavailable after reconnect: %s", e)
-                            self._battery = None
-                    return True
-                except OSError as e:
-                    log.warning(f"Device found but failed to open: {e}")
+                        init_vibration_modules(discovered.control_hidraw_path)
+                    self._rumble = RumbleHandler(discovered.hidraw_path)
+                if self._battery:
+                    self._battery.close()
+                    self._battery = None
+                if discovered.control_hidraw_path:
+                    from .hid import BatteryReader
+                    from .config import battery_notifications_enabled, battery_notify_thresholds
+                    thresholds = battery_notify_thresholds() if battery_notifications_enabled() else []
+                    self._battery = BatteryReader(discovered.control_hidraw_path,
+                                                  discovered.connection_type,
+                                                  notify_thresholds=thresholds)
+                    try:
+                        self._battery.start()
+                    except OSError as e:
+                        log.warning("Battery reader unavailable after reconnect: %s", e)
+                        self._battery = None
+                return True
+            except OSError as e:
+                log.warning("Device found but failed to open: %s", e)
         return False
 
     def _signal_handler(self, signum, frame):
-        """Handle SIGINT/SIGTERM gracefully."""
-        log.info(f"Received signal {signum}, shutting down...")
+        log.info("Received signal %d, shutting down...", signum)
         self._running = False
 
     def _cleanup(self):
-        """Release all grabbed devices, close rumble, and destroy the virtual gamepad."""
         log.info("Cleaning up...")
+        if self._ipc:
+            self._ipc.close()
+            self._ipc = None
         if self._rumble:
             self._rumble.close()
             self._rumble = None
@@ -393,16 +400,10 @@ class BridgeService:
         log.info("Cleanup complete")
 
 
-def run():
+def run(initial_profile: str | None = None):
     """Entry point: discover device and run the bridge."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
     from . import __version__
-    log.info(f"SCUF Envision Pro V2 Linux Driver v{__version__} starting...")
+    log.info("SCUF Envision Pro V2 Linux Driver v%s starting...", __version__)
 
     discovered = discover_scuf_with_retry()
     if discovered is None:
@@ -411,16 +412,14 @@ def run():
         log.error("Check: lsusb | grep 1b1c")
         sys.exit(1)
 
-    log.info(f"Found controller: {discovered}")
+    log.info("Found controller: %s", discovered)
 
-    # Apply audio config (disable/enable USB audio per /etc/scuf-envision/config.ini)
     from .audio_control import apply_audio_config
     try:
         apply_audio_config()
     except Exception as e:
-        log.warning(f"Could not apply audio config: {e}")
+        log.warning("Could not apply audio config: %s", e)
 
-    # Rumble config
     from .config import is_rumble_disabled
     rumble_enabled = not is_rumble_disabled()
     if rumble_enabled and discovered.hidraw_path:
@@ -431,10 +430,10 @@ def run():
     else:
         log.info("Rumble disabled by config")
 
-    # Enable reconnection for wireless connections
     reconnect = (discovered.connection_type == "wireless")
     if reconnect:
         log.info("Wireless mode: reconnection on disconnect is enabled")
 
-    bridge = BridgeService(discovered, reconnect=reconnect, rumble_enabled=rumble_enabled)
+    bridge = BridgeService(discovered, reconnect=reconnect, rumble_enabled=rumble_enabled,
+                           initial_profile=initial_profile)
     bridge.start()

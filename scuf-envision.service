@@ -13,6 +13,12 @@ RestartSec=3
 # Alternatively, run as your user if udev rules + uinput group are configured
 User=root
 
+# Create /run/scuf-envision/ for the IPC socket, owned root:input mode 0750.
+# Users in group 'input' can then connect to the socket without sudo.
+RuntimeDirectory=scuf-envision
+RuntimeDirectoryMode=0750
+RuntimeDirectoryGroup=input
+
 # Hardening
 ProtectHome=read-only
 ProtectSystem=strict

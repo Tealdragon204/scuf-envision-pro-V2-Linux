@@ -59,7 +59,7 @@ up to 5 min while waiting for controller reconnection.
 | 8 | Audio fix v2 (amixer numid=8 volume + serial-aware WirePlumber config) | ✅ | `install.sh`, `50-scuf-audio.conf`, `tools/setup_scuf_audio.sh` |
 | 9 | Battery detection | ✅ | `scuf_envision/hid.py` |
 | 10 | OpenLinkHub coexistence | ✅ | `bridge.py`, `scuf_envision/discovery.py` |
-| 11 | IPC socket + `scuf-ctl` CLI + `scuf-profile` wrapper + named profiles in config | Planned | `scuf_envision/config.py`, `bridge.py`, `tools/scuf-ctl`, `tools/scuf-profile` |
+| 11 | IPC socket + `scuf-ctl` CLI + `scuf-profile` wrapper + named profiles in config | ✅ | `scuf_envision/config.py`, `bridge.py`, `tools/scuf-ctl`, `tools/scuf-profile` |
 | 12 | RGB control | Planned | `scuf_envision/hid.py` |
 | 13 | Vibration/haptics passthrough | Planned | `scuf_envision/hid.py`, `virtual_gamepad.py` |
 | 14 | Trigger configuration (curve, deadzone per-trigger) | Planned | `scuf_envision/hid.py`, `input_filter.py` |

@@ -93,6 +93,21 @@ def poll_timeout_ms() -> int:
     return load_config().getint("driver", "poll_timeout_ms", fallback=2)
 
 
+def load_profiles() -> dict[str, dict[str, str]]:
+    """Return {profile_name: {physical_code_str: virtual_code_str}} from config.
+
+    Scans all [profile.*] sections. Returns raw string names; evdev resolution
+    is left to ProfileManager.from_config() to keep this module evdev-free.
+    """
+    config = load_config()
+    prefix = "profile."
+    return {
+        section[len(prefix):]: dict(config[section])
+        for section in config.sections()
+        if section.startswith(prefix)
+    }
+
+
 def battery_notify_thresholds() -> list[int]:
     """Return sorted descending list of battery % thresholds that trigger notifications."""
     config = load_config()

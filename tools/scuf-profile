@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# scuf-profile — Launch a game under a named SCUF button profile.
+#
+# Usage:
+#   scuf-profile PROFILE_NAME COMMAND [ARGS...]
+#
+# Steam / Heroic launch option:
+#   scuf-profile BIOSHOCK %command%
+#
+# The named profile is activated before the game starts and "default" is
+# restored when the game exits — including force-quit (SIGKILL).
+# Restoration works because this wrapper watches the game's PID externally;
+# the game process dying does not kill this script.
+
+set -euo pipefail
+
+PROFILE="${1:?Usage: scuf-profile PROFILE_NAME COMMAND [ARGS...]}"
+shift
+
+# Verify scuf-ctl is available
+if ! command -v scuf-ctl &>/dev/null; then
+    echo "scuf-profile: scuf-ctl not found in PATH — launching without profile switch" >&2
+    exec "$@"
+fi
+
+# Fail fast if driver is not running (avoids a confusing mid-game state)
+if ! scuf-ctl ping &>/dev/null; then
+    echo "scuf-profile: driver not running — launching without profile switch" >&2
+    exec "$@"
+fi
+
+# Activate the profile
+if ! scuf-ctl profile "$PROFILE" 2>/dev/null; then
+    echo "scuf-profile: profile '$PROFILE' not found — launching with current profile" >&2
+fi
+
+# Restore default profile on exit regardless of how the game exits.
+# Fires on: normal exit, SIGTERM/SIGHUP to this wrapper, game SIGKILL, OOM kill.
+# Does NOT fire if this wrapper itself is SIGKILL'd (acceptable — user can
+# run 'scuf-ctl profile default' manually or restart the driver).
+_restore() {
+    scuf-ctl profile default 2>/dev/null || true
+}
+trap _restore EXIT
+
+# Launch game in background, forward SIGTERM/SIGINT to it
+"$@" &
+GAME_PID=$!
+
+_forward() {
+    kill -TERM "$GAME_PID" 2>/dev/null || true
+}
+trap _forward SIGTERM SIGINT
+
+# Wait for the game to exit — returns when game dies for any reason
+wait "$GAME_PID" || true
+# EXIT trap fires here, restoring default profile
