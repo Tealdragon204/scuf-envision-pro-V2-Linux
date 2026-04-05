@@ -68,6 +68,7 @@ up to 5 min while waiting for controller reconnection.
 | 17 | Macros — button-to-sequence bindings per layer, delay support | Planned | `bridge.py`, `scuf_envision/config.py` |
 | 18 | Desktop layer — persistent global base layer across all profiles; lower priority than profile bindings; intended for window switching, media keys, etc. | Planned | `bridge.py`, `scuf_envision/config.py` |
 | 19 | OSK integration — invoke system on-screen keyboard from a button bind | Blocked | `bridge.py` — waiting on xdg-desktop-portal gamepad input portal |
+| 20 | DS4 emulation — configurable virtual device target (Xbox / DS4 / DualSense); changes VID:PID and button layout of uinput device; enables PS button prompts in games; per-profile override supported | Planned | `scuf_envision/virtual_gamepad.py`, `scuf_envision/config.py` |
 
 ## Known Platform Constraints
 
