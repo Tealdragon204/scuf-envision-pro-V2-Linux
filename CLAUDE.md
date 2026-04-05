@@ -56,14 +56,18 @@ up to 5 min while waiting for controller reconnection.
 | 5 | Wireless support (auto-reconnect loop) | ✅ | `bridge.py` |
 | 6 | Installer + systemd service | ✅ | `install.sh`, `uninstall.sh`, `scuf-envision.service` |
 | 7 | Diagnostics | ✅ | `tools/diag.py` |
-| 8 | Audio fix v2 (amixer numid=8 volume + serial-aware WirePlumber config) | Planned | `install.sh`, `50-scuf-audio.conf`, `tools/setup_scuf_audio.sh` |
-| 9 | Battery detection | Planned | `scuf_envision/hid.py` (new) |
-| 10 | OpenLinkHub coexistence (disable OLH virtual gamepad; keep HID layer ours) | ⚠️ Partial | `bridge.py`, `scuf_envision/discovery.py` — grab suppresses OLH's uinput gamepad; HID-layer conflict (duplicate keepalives when OLH runs) unresolved |
-| 11 | Button remapping + per-game profiles | Planned | `scuf_envision/config.py`, `bridge.py`, `constants.py` |
+| 8 | Audio fix v2 (amixer numid=8 volume + serial-aware WirePlumber config) | ✅ | `install.sh`, `50-scuf-audio.conf`, `tools/setup_scuf_audio.sh` |
+| 9 | Battery detection | ✅ | `scuf_envision/hid.py` |
+| 10 | OpenLinkHub coexistence | ✅ | `bridge.py`, `scuf_envision/discovery.py` |
+| 11 | IPC socket + `scuf-ctl` CLI + `scuf-profile` wrapper + named profiles in config | Planned | `scuf_envision/config.py`, `bridge.py`, `tools/scuf-ctl`, `tools/scuf-profile` |
 | 12 | RGB control | Planned | `scuf_envision/hid.py` |
 | 13 | Vibration/haptics passthrough | Planned | `scuf_envision/hid.py`, `virtual_gamepad.py` |
 | 14 | Trigger configuration (curve, deadzone per-trigger) | Planned | `scuf_envision/hid.py`, `input_filter.py` |
 | 15 | Tray app | Planned | `tools/tray.py` (new) |
+| 16 | Layers — per-profile layer stack, paddle/button layer switching, layer-switch `notify-send` with layer name | Planned | `bridge.py`, `scuf_envision/config.py` |
+| 17 | Macros — button-to-sequence bindings per layer, delay support | Planned | `bridge.py`, `scuf_envision/config.py` |
+| 18 | Desktop layer — persistent global base layer across all profiles; lower priority than profile bindings; intended for window switching, media keys, etc. | Planned | `bridge.py`, `scuf_envision/config.py` |
+| 19 | OSK integration — invoke system on-screen keyboard from a button bind | Blocked | `bridge.py` — waiting on xdg-desktop-portal gamepad input portal |
 
 ## Known Platform Constraints
 
