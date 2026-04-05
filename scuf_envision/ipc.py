@@ -5,7 +5,6 @@ call handle_request() on POLLIN. Each request is handled synchronously:
 accept → recv (100 ms timeout) → dispatch → send response → close client.
 """
 
-import grp
 import json
 import logging
 import os
@@ -30,12 +29,7 @@ class IPCServer:
         self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._sock.setblocking(False)
         self._sock.bind(socket_path)
-        os.chmod(socket_path, 0o660)
-        try:
-            gid = grp.getgrnam("input").gr_gid
-            os.chown(socket_path, -1, gid)
-        except (KeyError, OSError):
-            pass
+        os.chmod(socket_path, 0o666)
         self._sock.listen(1)
         log.info("IPC socket: %s", socket_path)
 

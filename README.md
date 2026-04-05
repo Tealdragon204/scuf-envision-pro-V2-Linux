@@ -68,7 +68,6 @@ This does everything automatically:
 - Copies the driver to `/opt/scuf-envision`
 - Installs default config to `/etc/scuf-envision/config.ini`
 - Installs `scuf-audio-toggle`, `scuf-ctl`, and `scuf-profile` tools to `/usr/local/bin/`
-- Adds your user to the `input` group (required for `scuf-ctl` without sudo)
 - Sets `SDL_GAMECONTROLLER_IGNORE_DEVICES` so Steam/SDL ignores the raw SCUF device
 - Installs and starts the systemd service (auto-starts on boot)
 - Installs the WirePlumber audio fix (headphone volume)
@@ -302,9 +301,7 @@ git pull
 sudo bash install.sh
 ```
 
-Then **log out and back in** (or reboot). This is required for any group membership changes (e.g. being added to `input`) to take effect in your session — without it, `scuf-ctl` will fail with `Permission denied`.
-
-After logging back in, verify the update took effect:
+Then verify the update took effect:
 
 ```bash
 sudo systemctl status scuf-envision.service
