@@ -19,7 +19,7 @@ RuntimeDirectoryMode=0755
 
 # Hardening
 ProtectHome=read-only
-ProtectSystem=strict
+ProtectSystem=full
 
 [Install]
 WantedBy=multi-user.target
