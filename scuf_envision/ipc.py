@@ -63,10 +63,14 @@ class IPCServer:
             return "pong"
 
         if cmd == "status":
+            if profile_mgr is None:
+                return json.dumps({"status": "searching_for_controller"})
             return json.dumps({**state, "profile": profile_mgr.active_name,
                                 "profiles": profile_mgr.list_profiles()})
 
         if cmd.startswith("profile "):
+            if profile_mgr is None:
+                return "error: controller not connected yet"
             name = cmd[len("profile "):].strip()
             try:
                 profile_mgr.switch(name)
