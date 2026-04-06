@@ -298,13 +298,14 @@ class RGBController:
         try:
             self._fd = os.open(self._path, os.O_RDWR)
             # OLH Connect() sequence: software mode → open LED endpoint →
-            # activate trigger backend → (set color) → disable eco mode
+            # activate trigger backend → disable eco mode (once, at init)
             os.write(self._fd, _packet(self._endpoint, _CMD_SOFTWARE_MODE))
             _read(self._fd, 1.0)
             os.write(self._fd, _packet(self._endpoint, RGB_CMD_OPEN_ENDPOINT))
             _read(self._fd, 0.5)
             os.write(self._fd, _packet(self._endpoint, RGB_CMD_INIT_WRITE + RGB_CMD_TRIGGER_BACKEND))
             _read(self._fd, 0.5)
+            os.write(self._fd, _packet(self._endpoint, RGB_CMD_INIT_WRITE + RGB_CMD_ECO_MODE_OFF))
             log.info("RGB controller initialized: %s", self._path)
         except OSError as e:
             log.error("RGB init failed on %s: %s", self._path, e)
@@ -320,7 +321,6 @@ class RGBController:
         cmd = RGB_CMD_WRITE_COLOR + bytes([length & 0xff, length >> 8, 0x00, 0x00]) + buf
         try:
             os.write(self._fd, _packet(self._endpoint, cmd))
-            os.write(self._fd, _packet(self._endpoint, RGB_CMD_INIT_WRITE + RGB_CMD_ECO_MODE_OFF))
         except OSError as e:
             log.warning("RGB frame write failed: %s", e)
 
