@@ -102,11 +102,10 @@ class BridgeService:
                     log.warning("--profile %r not found in config, using default",
                                 self._initial_profile)
 
-            # Start IPC socket
             try:
                 self._ipc = IPCServer()
-            except OSError as e:
-                log.warning("IPC socket unavailable: %s", e)
+            except OSError:
+                log.error("IPC socket unavailable — scuf-ctl will not work", exc_info=True)
                 self._ipc = None
 
             self._open_devices()
