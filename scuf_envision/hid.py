@@ -12,6 +12,8 @@ import threading
 import time
 import logging
 
+from .constants import RGB_CMD_OPEN_ENDPOINT, RGB_CMD_WRITE_COLOR, RGB_NUM_LEDS
+
 log = logging.getLogger(__name__)
 
 _REPORT_SIZE     = 64
@@ -276,3 +278,54 @@ class BatteryReader:
                 os.close(fd)
             except OSError:
                 pass
+
+
+class RGBController:
+    """Controls the LED strip on the SCUF Envision Pro V2 via HID raw interface.
+
+    On init: sends software mode + opens LED endpoint.
+    set_color() writes a single 27-byte color packet (all 9 LEDs same color).
+    """
+
+    def __init__(self, hidraw_path: str, connection_type: str = "wired"):
+        self._path = hidraw_path
+        self._endpoint = _ENDPOINT_WIRELESS if connection_type == "wireless" else _ENDPOINT_WIRED
+        self._fd: int | None = None
+        self._open()
+
+    def _open(self):
+        try:
+            self._fd = os.open(self._path, os.O_RDWR)
+            os.write(self._fd, _packet(self._endpoint, _CMD_SOFTWARE_MODE))
+            _read(self._fd, 1.0)
+            os.write(self._fd, _packet(self._endpoint, RGB_CMD_OPEN_ENDPOINT))
+            _read(self._fd, 0.5)
+            log.info("RGB controller initialized: %s", self._path)
+        except OSError as e:
+            log.error("RGB init failed on %s: %s", self._path, e)
+            if self._fd is not None:
+                os.close(self._fd)
+                self._fd = None
+
+    def set_color(self, r: int, g: int, b: int, brightness: int = 100) -> None:
+        """Set all LEDs to one color. r/g/b in 0-255, brightness in 0-100."""
+        if self._fd is None:
+            return
+        scale = brightness / 100.0
+        ri, gi, bi = int(r * scale), int(g * scale), int(b * scale)
+        color = bytes([ri] * RGB_NUM_LEDS + [gi] * RGB_NUM_LEDS + [bi] * RGB_NUM_LEDS)
+        length = len(color)  # always 27
+        cmd = RGB_CMD_WRITE_COLOR + bytes([length & 0xff, length >> 8, 0x00, 0x00]) + color
+        try:
+            os.write(self._fd, _packet(self._endpoint, cmd))
+            log.debug("RGB (%d,%d,%d) @ %d%%", ri, gi, bi, brightness)
+        except OSError as e:
+            log.warning("RGB write failed: %s", e)
+
+    def close(self):
+        if self._fd is not None:
+            try:
+                os.close(self._fd)
+            except OSError:
+                pass
+            self._fd = None

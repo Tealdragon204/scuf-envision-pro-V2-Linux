@@ -27,6 +27,15 @@ disabled = false
 notifications = true
 notify_thresholds = 20,10,5,1
 
+[rgb]
+# Static LED color as R,G,B (each 0-255). Default: white.
+# To apply after editing: sudo systemctl restart scuf-envision
+# To change live without restart: scuf-ctl rgb RRGGBB  (e.g. scuf-ctl rgb ff0000)
+color = 255,255,255
+
+# Brightness as a percentage (0-100). Applied by scaling the color values.
+brightness = 100
+
 [driver]
 # Event loop poll timeout in milliseconds.
 # Default 2 matches the controller's 500 Hz report rate (wired + Slipstream wireless).
