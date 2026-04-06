@@ -81,22 +81,90 @@ class IPCServer:
                 return f"error: unknown profile '{name}'"
 
         if cmd.startswith("rgb "):
-            rgb = (extras or {}).get("rgb")
-            if rgb is None:
+            set_rgb = (extras or {}).get("set_rgb")
+            if set_rgb is None:
                 return "error: rgb not available"
-            hex_color = cmd[4:].strip().lstrip("#")
-            if len(hex_color) != 6:
-                return "error: expected hex color RRGGBB"
-            try:
-                r = int(hex_color[0:2], 16)
-                g = int(hex_color[2:4], 16)
-                b = int(hex_color[4:6], 16)
-            except ValueError:
-                return "error: invalid hex color"
-            rgb.set_color(r, g, b)
-            return "ok"
+            return self._dispatch_rgb(cmd[4:].strip(), set_rgb)
 
         return "error: unknown command"
+
+    @staticmethod
+    def _parse_hex(s: str) -> tuple[int, int, int] | None:
+        s = s.lstrip("#")
+        if len(s) != 6:
+            return None
+        try:
+            return int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
+        except ValueError:
+            return None
+
+    def _dispatch_rgb(self, args: str, set_rgb) -> str:
+        from .rgb import RGB_MODES
+        from .config import rgb_color, rgb_color2, rgb_speed, rgb_brightness
+
+        parts = args.split()
+        if not parts:
+            return "error: missing mode"
+
+        mode = parts[0]
+
+        # Backward compat: bare hex color → static
+        if len(mode) == 6 and all(c in "0123456789abcdefABCDEF" for c in mode):
+            color = self._parse_hex(mode)
+            if color is None:
+                return "error: invalid hex color"
+            r2, g2, b2 = rgb_color2()
+            set_rgb("static", r=color[0], g=color[1], b=color[2],
+                    r2=r2, g2=g2, b2=b2, brightness=rgb_brightness(), speed=rgb_speed())
+            return "ok"
+
+        if mode not in RGB_MODES:
+            return f"error: unknown mode '{mode}' (valid: {', '.join(RGB_MODES)})"
+
+        # Defaults from config
+        r, g, b = rgb_color()
+        r2, g2, b2 = rgb_color2()
+        speed = rgb_speed()
+        brightness = rgb_brightness()
+        rest = parts[1:]
+
+        try:
+            # Modes that accept: [color] [color2] [speed]
+            if mode in ("colorpulse", "colorshift", "storm", "flickering"):
+                if rest:
+                    c = self._parse_hex(rest[0])
+                    if c is None:
+                        return f"error: invalid hex color '{rest[0]}'"
+                    r, g, b = c
+                    rest = rest[1:]
+                if rest:
+                    c = self._parse_hex(rest[0])
+                    if c is None:
+                        return f"error: invalid hex color '{rest[0]}'"
+                    r2, g2, b2 = c
+                    rest = rest[1:]
+                if rest and mode != "storm":
+                    speed = float(rest[0])
+            # Modes that accept: [color] [speed]
+            elif mode in ("wave", "static"):
+                if rest:
+                    c = self._parse_hex(rest[0])
+                    if c is None:
+                        return f"error: invalid hex color '{rest[0]}'"
+                    r, g, b = c
+                    rest = rest[1:]
+                if rest and mode != "static":
+                    speed = float(rest[0])
+            # Modes that accept only [speed]
+            elif mode in ("rainbow", "pastelrainbow", "watercolor", "rotator", "cpu-temperature"):
+                if rest:
+                    speed = float(rest[0])
+            # off: no params
+        except (ValueError, IndexError) as e:
+            return f"error: bad argument — {e}"
+
+        set_rgb(mode, r=r, g=g, b=b, r2=r2, g2=g2, b2=b2, speed=speed, brightness=brightness)
+        return "ok"
 
     def close(self) -> None:
         try:

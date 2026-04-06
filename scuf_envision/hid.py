@@ -312,22 +312,24 @@ class RGBController:
                 os.close(self._fd)
                 self._fd = None
 
-    def set_color(self, r: int, g: int, b: int, brightness: int = 100) -> None:
-        """Set all LEDs to one color. r/g/b in 0-255, brightness in 0-100."""
+    def write_frame(self, buf: bytes) -> None:
+        """Send a raw 27-byte planar RGB frame (R×9, G×9, B×9)."""
         if self._fd is None:
             return
-        scale = brightness / 100.0
-        ri, gi, bi = int(r * scale), int(g * scale), int(b * scale)
-        color = bytes([ri] * RGB_NUM_LEDS + [gi] * RGB_NUM_LEDS + [bi] * RGB_NUM_LEDS)
-        length = len(color)  # always 27
-        cmd = RGB_CMD_WRITE_COLOR + bytes([length & 0xff, length >> 8, 0x00, 0x00]) + color
+        length = len(buf)
+        cmd = RGB_CMD_WRITE_COLOR + bytes([length & 0xff, length >> 8, 0x00, 0x00]) + buf
         try:
             os.write(self._fd, _packet(self._endpoint, cmd))
-            # OLH sends eco-mode-off after setDeviceColor() to ensure LEDs are active
             os.write(self._fd, _packet(self._endpoint, RGB_CMD_INIT_WRITE + RGB_CMD_ECO_MODE_OFF))
-            log.debug("RGB (%d,%d,%d) @ %d%%", ri, gi, bi, brightness)
         except OSError as e:
-            log.warning("RGB write failed: %s", e)
+            log.warning("RGB frame write failed: %s", e)
+
+    def set_color(self, r: int, g: int, b: int, brightness: int = 100) -> None:
+        """Set all LEDs to one color. r/g/b in 0-255, brightness in 0-100."""
+        scale = brightness / 100.0
+        ri, gi, bi = int(r * scale), int(g * scale), int(b * scale)
+        self.write_frame(bytes([ri] * RGB_NUM_LEDS + [gi] * RGB_NUM_LEDS + [bi] * RGB_NUM_LEDS))
+        log.debug("RGB (%d,%d,%d) @ %d%%", ri, gi, bi, brightness)
 
     def close(self):
         if self._fd is not None:

@@ -54,6 +54,7 @@ class BridgeService:
 
         self._battery = None
         self._rgb = None
+        self._rgb_animator = None
         self._physical = None
         self._grabbed_devices = []
         self._running = False
@@ -95,11 +96,10 @@ class BridgeService:
 
             if self.discovered.control_hidraw_path:
                 from .hid import RGBController
-                from .config import rgb_color, rgb_brightness
                 try:
                     self._rgb = RGBController(self.discovered.control_hidraw_path,
                                               self.discovered.connection_type)
-                    self._rgb.set_color(*rgb_color(), brightness=rgb_brightness())
+                    self._start_rgb()
                 except OSError as e:
                     log.warning("RGB unavailable: %s", e)
                     self._rgb = None
@@ -207,7 +207,7 @@ class BridgeService:
                     self._handle_ff_events()
                 elif ready_fd == ipc_fd:
                     self._ipc.handle_request(self._profile, self._build_status_state(),
-                                             extras={"rgb": self._rgb})
+                                             extras={"set_rgb": self._set_rgb_mode})
 
     def _handle_event(self, event):
         if event.type == ecodes.EV_KEY:
@@ -321,6 +321,36 @@ class BridgeService:
             self.gamepad.emit_axis(out_x_code, fx)
             self.gamepad.emit_axis(out_y_code, fy)
 
+    def _start_rgb(self) -> None:
+        from .rgb import RGBAnimator
+        from .config import rgb_mode, rgb_color, rgb_color2, rgb_speed, rgb_brightness
+        r, g, b = rgb_color()
+        r2, g2, b2 = rgb_color2()
+        mode = rgb_mode()
+        params = dict(r=r, g=g, b=b, r2=r2, g2=g2, b2=b2,
+                      speed=rgb_speed(), brightness=rgb_brightness())
+        self._rgb_animator = RGBAnimator(self._rgb, mode, **params)
+        self._rgb_animator.start()
+        log.info("RGB mode: %s", mode)
+
+    def _stop_rgb(self) -> None:
+        if self._rgb_animator:
+            self._rgb_animator.stop()
+            self._rgb_animator = None
+        if self._rgb:
+            self._rgb.close()
+            self._rgb = None
+
+    def _set_rgb_mode(self, mode: str, **params) -> None:
+        """IPC callback: stop current animator, start a new one with given mode/params."""
+        if self._rgb_animator:
+            self._rgb_animator.stop()
+            self._rgb_animator = None
+        if self._rgb:
+            from .rgb import RGBAnimator
+            self._rgb_animator = RGBAnimator(self._rgb, mode, **params)
+            self._rgb_animator.start()
+
     def _build_status_state(self) -> dict:
         from . import __version__
         return {
@@ -388,16 +418,13 @@ class BridgeService:
                     except OSError as e:
                         log.warning("Battery reader unavailable after reconnect: %s", e)
                         self._battery = None
-                if self._rgb:
-                    self._rgb.close()
-                    self._rgb = None
+                self._stop_rgb()
                 if discovered.control_hidraw_path:
                     from .hid import RGBController
-                    from .config import rgb_color, rgb_brightness
                     try:
                         self._rgb = RGBController(discovered.control_hidraw_path,
                                                   discovered.connection_type)
-                        self._rgb.set_color(*rgb_color(), brightness=rgb_brightness())
+                        self._start_rgb()
                     except OSError as e:
                         log.warning("RGB unavailable after reconnect: %s", e)
                 return True
@@ -420,9 +447,7 @@ class BridgeService:
         if self._battery:
             self._battery.close()
             self._battery = None
-        if self._rgb:
-            self._rgb.close()
-            self._rgb = None
+        self._stop_rgb()
         self._release_physical()
         self.gamepad.close()
         log.info("Cleanup complete")

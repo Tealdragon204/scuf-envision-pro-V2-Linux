@@ -28,12 +28,23 @@ notifications = true
 notify_thresholds = 20,10,5,1
 
 [rgb]
-# Static LED color as R,G,B (each 0-255). Default: white.
-# To apply after editing: sudo systemctl restart scuf-envision
-# To change live without restart: scuf-ctl rgb RRGGBB  (e.g. scuf-ctl rgb ff0000)
+# Animation mode. Options:
+#   static, off, rainbow, pastelrainbow, watercolor, rotator,
+#   colorpulse, colorshift, wave, storm, flickering, cpu-temperature
+# To change live without restart: scuf-ctl rgb MODE [args...]
+mode = static
+
+# Primary color as R,G,B (each 0-255). Used by static, wave, and as the start
+# color for two-color modes (colorpulse, colorshift, storm, flickering).
 color = 255,255,255
 
-# Brightness as a percentage (0-100). Applied by scaling the color values.
+# Secondary/end color for two-color animation modes.
+color2 = 0,0,255
+
+# Animation speed multiplier (0.1–20.0). Higher = faster.
+speed = 1.0
+
+# Brightness as a percentage (0-100).
 brightness = 100
 
 [driver]

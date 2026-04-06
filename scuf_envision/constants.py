@@ -118,6 +118,7 @@ RGB_CMD_INIT_WRITE       = bytes([0x01])                  # OLH cmdInitWrite pre
 RGB_CMD_TRIGGER_BACKEND  = bytes([0xc0, 0x00, 0x01])      # activate trigger endpoint
 RGB_CMD_ECO_MODE_OFF     = bytes([0x0b, 0x00, 0x00])      # disable eco mode (enables LEDs)
 RGB_NUM_LEDS             = 9   # 9 channels; layout: R[0-8] G[9-17] B[18-26]
+RGB_FRAME_SIZE           = 27  # 3 planes × 9 LEDs
 
 # --- Polling ---
 POLL_TIMEOUT_MS = 2  # 500 Hz — matches hardware report rate (wired + Slipstream wireless)
