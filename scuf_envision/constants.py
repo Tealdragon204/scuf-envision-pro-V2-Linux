@@ -112,9 +112,12 @@ VIBRATION_TRANSFER_SIZE = 65
 
 # --- RGB HID protocol ---
 # Confirmed via OpenLinkHub (Go) source for SCUF Envision Pro V2.
-RGB_CMD_OPEN_ENDPOINT = bytes([0x0d, 0x00, 0x01])
-RGB_CMD_WRITE_COLOR   = bytes([0x06, 0x00])
-RGB_NUM_LEDS          = 9   # 9 channels; layout: R[0-8] G[9-17] B[18-26]
+RGB_CMD_OPEN_ENDPOINT    = bytes([0x0d, 0x00, 0x01])
+RGB_CMD_WRITE_COLOR      = bytes([0x06, 0x00])
+RGB_CMD_INIT_WRITE       = bytes([0x01])                  # OLH cmdInitWrite prefix
+RGB_CMD_TRIGGER_BACKEND  = bytes([0xc0, 0x00, 0x01])      # activate trigger endpoint
+RGB_CMD_ECO_MODE_OFF     = bytes([0x0b, 0x00, 0x00])      # disable eco mode (enables LEDs)
+RGB_NUM_LEDS             = 9   # 9 channels; layout: R[0-8] G[9-17] B[18-26]
 
 # --- Polling ---
 POLL_TIMEOUT_MS = 2  # 500 Hz — matches hardware report rate (wired + Slipstream wireless)

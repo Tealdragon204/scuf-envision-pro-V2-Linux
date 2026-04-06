@@ -12,7 +12,8 @@ import threading
 import time
 import logging
 
-from .constants import RGB_CMD_OPEN_ENDPOINT, RGB_CMD_WRITE_COLOR, RGB_NUM_LEDS
+from .constants import (RGB_CMD_OPEN_ENDPOINT, RGB_CMD_WRITE_COLOR, RGB_NUM_LEDS,
+                        RGB_CMD_INIT_WRITE, RGB_CMD_TRIGGER_BACKEND, RGB_CMD_ECO_MODE_OFF)
 
 log = logging.getLogger(__name__)
 
@@ -296,9 +297,13 @@ class RGBController:
     def _open(self):
         try:
             self._fd = os.open(self._path, os.O_RDWR)
+            # OLH Connect() sequence: software mode → open LED endpoint →
+            # activate trigger backend → (set color) → disable eco mode
             os.write(self._fd, _packet(self._endpoint, _CMD_SOFTWARE_MODE))
             _read(self._fd, 1.0)
             os.write(self._fd, _packet(self._endpoint, RGB_CMD_OPEN_ENDPOINT))
+            _read(self._fd, 0.5)
+            os.write(self._fd, _packet(self._endpoint, RGB_CMD_INIT_WRITE + RGB_CMD_TRIGGER_BACKEND))
             _read(self._fd, 0.5)
             log.info("RGB controller initialized: %s", self._path)
         except OSError as e:
@@ -318,6 +323,8 @@ class RGBController:
         cmd = RGB_CMD_WRITE_COLOR + bytes([length & 0xff, length >> 8, 0x00, 0x00]) + color
         try:
             os.write(self._fd, _packet(self._endpoint, cmd))
+            # OLH sends eco-mode-off after setDeviceColor() to ensure LEDs are active
+            os.write(self._fd, _packet(self._endpoint, RGB_CMD_INIT_WRITE + RGB_CMD_ECO_MODE_OFF))
             log.debug("RGB (%d,%d,%d) @ %d%%", ri, gi, bi, brightness)
         except OSError as e:
             log.warning("RGB write failed: %s", e)
