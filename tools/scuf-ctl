@@ -3,11 +3,25 @@
 scuf-ctl — IPC client for the SCUF Envision Pro V2 driver.
 
 Usage:
-    scuf-ctl ping              Check if driver is running
-    scuf-ctl status            Show driver status (profile, device, rumble, RGB, PID)
-    scuf-ctl profile NAME      Switch to a named profile (live, no restart)
-    scuf-ctl profile default   Restore default profile
-    scuf-ctl rgb RRGGBB        Set LED color (hex, e.g. ff0000 for red)
+    scuf-ctl ping                              Check if driver is running
+    scuf-ctl status                            Show driver status
+    scuf-ctl profile NAME                      Switch to a named profile (live)
+    scuf-ctl profile default                   Restore default profile
+    scuf-ctl rgb off                           Turn LEDs off
+    scuf-ctl rgb static [RRGGBB]               Solid color
+    scuf-ctl rgb rainbow [speed]               Rainbow hue sweep
+    scuf-ctl rgb pastelrainbow [speed]         Pastel palette sweep
+    scuf-ctl rgb watercolor [speed]            Watercolor wash
+    scuf-ctl rgb rotator [speed]               Rotating single hue
+    scuf-ctl rgb colorpulse [RR GG] [speed]    Ping-pong between two colors
+    scuf-ctl rgb colorshift [RR GG] [speed]    Alternating shift between two colors
+    scuf-ctl rgb wave [RRGGBB] [speed]         Sinusoidal wave
+    scuf-ctl rgb storm [RR GG]                 Random per-LED color flips
+    scuf-ctl rgb flickering [RR GG] [speed]    Candle flicker
+    scuf-ctl rgb cpu-temperature [speed]       Blue (cool) → red (hot)
+    scuf-ctl rgb RRGGBB                        Shorthand for 'static RRGGBB'
+
+  RR/GG = two hex colors (e.g. ff0000 0000ff); speed = 0.1-20.0 (default 1.0).
 """
 
 import json
@@ -80,14 +94,15 @@ def main():
 
     elif cmd == "rgb":
         if len(args) < 2:
-            print("usage: scuf-ctl rgb RRGGBB  (e.g. ff0000 for red)", file=sys.stderr)
+            print("usage: scuf-ctl rgb MODE [args...]  (run scuf-ctl for full help)",
+                  file=sys.stderr)
             sys.exit(1)
-        hex_color = args[1].lstrip("#")
-        resp = send_command(f"rgb {hex_color}")
+        rgb_args = " ".join(a.lstrip("#") for a in args[1:])
+        resp = send_command(f"rgb {rgb_args}")
         if resp.startswith("error:"):
             print(resp, file=sys.stderr)
             sys.exit(1)
-        print(f"RGB set to: #{hex_color.upper()}")
+        print(f"RGB: {' '.join(args[1:])}")
 
     else:
         print(f"error: unknown command '{cmd}'", file=sys.stderr)

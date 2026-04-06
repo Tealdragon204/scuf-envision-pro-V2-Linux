@@ -28,7 +28,10 @@ DEFAULTS = {
         "poll_timeout_ms": "2",
     },
     "rgb": {
+        "mode": "static",
         "color": "255,255,255",
+        "color2": "0,0,255",
+        "speed": "1.0",
         "brightness": "100",
     },
 }
@@ -110,6 +113,34 @@ def load_profiles() -> dict[str, dict[str, str]]:
         for section in config.sections()
         if section.startswith(prefix)
     }
+
+
+def rgb_mode() -> str:
+    """Return animation mode name from config, validated against RGB_MODES."""
+    from .rgb import RGB_MODES
+    mode = load_config().get("rgb", "mode", fallback="static")
+    return mode if mode in RGB_MODES else "static"
+
+
+def rgb_color2() -> tuple[int, int, int]:
+    """Return secondary (r, g, b) color from config, defaulting to blue."""
+    raw = load_config().get("rgb", "color2", fallback="0,0,255")
+    try:
+        parts = [max(0, min(255, int(x.strip()))) for x in raw.split(",")]
+        if len(parts) == 3:
+            return tuple(parts)
+    except ValueError:
+        pass
+    return (0, 0, 255)
+
+
+def rgb_speed() -> float:
+    """Return animation speed multiplier (0.1–20.0) from config."""
+    try:
+        v = float(load_config().get("rgb", "speed", fallback="1.0"))
+        return max(0.1, min(20.0, v))
+    except ValueError:
+        return 1.0
 
 
 def rgb_color() -> tuple[int, int, int]:
