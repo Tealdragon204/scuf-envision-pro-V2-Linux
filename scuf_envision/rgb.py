@@ -15,7 +15,7 @@ from .constants import RGB_NUM_LEDS, RGB_FRAME_SIZE
 
 log = logging.getLogger(__name__)
 
-FRAME_INTERVAL = 1 / 60  # ~16.7ms = 60 fps
+FRAME_INTERVAL = 0.040  # 40ms = 25 fps — hardware HID OUT endpoint limit
 
 
 # ── colour helpers ────────────────────────────────────────────────────────────
