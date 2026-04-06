@@ -4,9 +4,10 @@ scuf-ctl — IPC client for the SCUF Envision Pro V2 driver.
 
 Usage:
     scuf-ctl ping              Check if driver is running
-    scuf-ctl status            Show driver status (profile, device, rumble, PID)
+    scuf-ctl status            Show driver status (profile, device, rumble, RGB, PID)
     scuf-ctl profile NAME      Switch to a named profile (live, no restart)
     scuf-ctl profile default   Restore default profile
+    scuf-ctl rgb RRGGBB        Set LED color (hex, e.g. ff0000 for red)
 """
 
 import json
@@ -62,6 +63,7 @@ def main():
         print(f"Profiles:   {', '.join(profiles) if profiles else 'none'}")
         print(f"Device:     {data.get('device', '?')} ({data.get('connection', '?')})")
         print(f"Rumble:     {'yes' if data.get('rumble') else 'no'}")
+        print(f"RGB:        {'yes' if data.get('rgb') else 'no'}")
         print(f"Driver PID: {data.get('pid', '?')}")
         print(f"Version:    {data.get('driver_version', '?')}")
 
@@ -75,6 +77,17 @@ def main():
             print(resp, file=sys.stderr)
             sys.exit(1)
         print(f"Profile set to: {name}")
+
+    elif cmd == "rgb":
+        if len(args) < 2:
+            print("usage: scuf-ctl rgb RRGGBB  (e.g. ff0000 for red)", file=sys.stderr)
+            sys.exit(1)
+        hex_color = args[1].lstrip("#")
+        resp = send_command(f"rgb {hex_color}")
+        if resp.startswith("error:"):
+            print(resp, file=sys.stderr)
+            sys.exit(1)
+        print(f"RGB set to: #{hex_color.upper()}")
 
     else:
         print(f"error: unknown command '{cmd}'", file=sys.stderr)

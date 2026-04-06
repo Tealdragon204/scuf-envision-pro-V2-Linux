@@ -53,6 +53,7 @@ class BridgeService:
         self._ff_gain = 65535
 
         self._battery = None
+        self._rgb = None
         self._physical = None
         self._grabbed_devices = []
         self._running = False
@@ -91,6 +92,17 @@ class BridgeService:
                 except OSError as e:
                     log.warning("Battery reader unavailable: %s", e)
                     self._battery = None
+
+            if self.discovered.control_hidraw_path:
+                from .hid import RGBController
+                from .config import rgb_color, rgb_brightness
+                try:
+                    self._rgb = RGBController(self.discovered.control_hidraw_path,
+                                              self.discovered.connection_type)
+                    self._rgb.set_color(*rgb_color(), brightness=rgb_brightness())
+                except OSError as e:
+                    log.warning("RGB unavailable: %s", e)
+                    self._rgb = None
 
             # Load profiles from config
             config = load_config()
@@ -194,7 +206,8 @@ class BridgeService:
                 elif ready_fd == vgpad_fd:
                     self._handle_ff_events()
                 elif ready_fd == ipc_fd:
-                    self._ipc.handle_request(self._profile, self._build_status_state())
+                    self._ipc.handle_request(self._profile, self._build_status_state(),
+                                             extras={"rgb": self._rgb})
 
     def _handle_event(self, event):
         if event.type == ecodes.EV_KEY:
@@ -315,6 +328,7 @@ class BridgeService:
             "device": self.discovered.event_path,
             "connection": self.discovered.connection_type,
             "rumble": self._rumble_enabled,
+            "rgb": self._rgb is not None,
             "pid": os.getpid(),
         }
 
@@ -374,6 +388,18 @@ class BridgeService:
                     except OSError as e:
                         log.warning("Battery reader unavailable after reconnect: %s", e)
                         self._battery = None
+                if self._rgb:
+                    self._rgb.close()
+                    self._rgb = None
+                if discovered.control_hidraw_path:
+                    from .hid import RGBController
+                    from .config import rgb_color, rgb_brightness
+                    try:
+                        self._rgb = RGBController(discovered.control_hidraw_path,
+                                                  discovered.connection_type)
+                        self._rgb.set_color(*rgb_color(), brightness=rgb_brightness())
+                    except OSError as e:
+                        log.warning("RGB unavailable after reconnect: %s", e)
                 return True
             except OSError as e:
                 log.warning("Device found but failed to open: %s", e)
@@ -394,6 +420,9 @@ class BridgeService:
         if self._battery:
             self._battery.close()
             self._battery = None
+        if self._rgb:
+            self._rgb.close()
+            self._rgb = None
         self._release_physical()
         self.gamepad.close()
         log.info("Cleanup complete")

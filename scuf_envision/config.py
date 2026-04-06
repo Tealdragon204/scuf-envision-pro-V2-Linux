@@ -27,6 +27,10 @@ DEFAULTS = {
     "driver": {
         "poll_timeout_ms": "2",
     },
+    "rgb": {
+        "color": "255,255,255",
+        "brightness": "100",
+    },
 }
 
 
@@ -106,6 +110,23 @@ def load_profiles() -> dict[str, dict[str, str]]:
         for section in config.sections()
         if section.startswith(prefix)
     }
+
+
+def rgb_color() -> tuple[int, int, int]:
+    """Return (r, g, b) from config, defaulting to white."""
+    raw = load_config().get("rgb", "color", fallback="255,255,255")
+    try:
+        parts = [max(0, min(255, int(x.strip()))) for x in raw.split(",")]
+        if len(parts) == 3:
+            return tuple(parts)
+    except ValueError:
+        pass
+    return (255, 255, 255)
+
+
+def rgb_brightness() -> int:
+    """Return brightness 0-100 from config."""
+    return max(0, min(100, load_config().getint("rgb", "brightness", fallback=100)))
 
 
 def battery_notify_thresholds() -> list[int]:

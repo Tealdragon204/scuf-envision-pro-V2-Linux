@@ -110,6 +110,12 @@ VIBRATION_MAX_INTENSITY = 100
 VIBRATION_TRANSFER_HEADER = bytearray([0x00, 0x02, 0x08, 0x01])
 VIBRATION_TRANSFER_SIZE = 65
 
+# --- RGB HID protocol ---
+# Confirmed via OpenLinkHub (Go) source for SCUF Envision Pro V2.
+RGB_CMD_OPEN_ENDPOINT = bytes([0x0d, 0x00, 0x01])
+RGB_CMD_WRITE_COLOR   = bytes([0x06, 0x00])
+RGB_NUM_LEDS          = 9   # 9 channels; layout: R[0-8] G[9-17] B[18-26]
+
 # --- Polling ---
 POLL_TIMEOUT_MS = 2  # 500 Hz — matches hardware report rate (wired + Slipstream wireless)
 

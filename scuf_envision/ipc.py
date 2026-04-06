@@ -36,7 +36,8 @@ class IPCServer:
     def fileno(self) -> int:
         return self._sock.fileno()
 
-    def handle_request(self, profile_mgr, state: dict) -> None:
+    def handle_request(self, profile_mgr, state: dict,
+                       extras: dict | None = None) -> None:
         """Accept one client, dispatch command, send response, close."""
         try:
             client, _ = self._sock.accept()
@@ -48,7 +49,7 @@ class IPCServer:
             client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVTIMEO, tv)
             data = client.recv(4096).decode(errors="replace").strip()
             if data:
-                response = self._dispatch(data, profile_mgr, state)
+                response = self._dispatch(data, profile_mgr, state, extras)
                 client.sendall((response + "\n").encode())
         except OSError:
             pass
@@ -58,7 +59,8 @@ class IPCServer:
             except OSError:
                 pass
 
-    def _dispatch(self, cmd: str, profile_mgr, state: dict) -> str:
+    def _dispatch(self, cmd: str, profile_mgr, state: dict,
+                  extras: dict | None = None) -> str:
         if cmd == "ping":
             return "pong"
 
@@ -77,6 +79,22 @@ class IPCServer:
                 return "ok"
             except KeyError:
                 return f"error: unknown profile '{name}'"
+
+        if cmd.startswith("rgb "):
+            rgb = (extras or {}).get("rgb")
+            if rgb is None:
+                return "error: rgb not available"
+            hex_color = cmd[4:].strip().lstrip("#")
+            if len(hex_color) != 6:
+                return "error: expected hex color RRGGBB"
+            try:
+                r = int(hex_color[0:2], 16)
+                g = int(hex_color[2:4], 16)
+                b = int(hex_color[4:6], 16)
+            except ValueError:
+                return "error: invalid hex color"
+            rgb.set_color(r, g, b)
+            return "ok"
 
         return "error: unknown command"
 

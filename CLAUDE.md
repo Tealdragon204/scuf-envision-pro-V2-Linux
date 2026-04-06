@@ -60,7 +60,7 @@ up to 5 min while waiting for controller reconnection.
 | 9 | Battery detection | ✅ | `scuf_envision/hid.py` |
 | 10 | OpenLinkHub coexistence | ✅ | `bridge.py`, `scuf_envision/discovery.py` |
 | 11 | IPC socket + `scuf-ctl` CLI + `scuf-profile` wrapper + named profiles in config | ✅ | `scuf_envision/config.py`, `bridge.py`, `tools/scuf-ctl`, `tools/scuf-profile` |
-| 12 | RGB control | Planned | `scuf_envision/hid.py` |
+| 12 | RGB control | ✅ | `scuf_envision/hid.py`, `scuf_envision/constants.py`, `scuf_envision/config.py` |
 | 13 | Vibration/haptics passthrough | Planned | `scuf_envision/hid.py`, `virtual_gamepad.py` |
 | 14 | Trigger configuration (curve, deadzone per-trigger) | Planned | `scuf_envision/hid.py`, `input_filter.py` |
 | 15 | Tray app | Planned | `tools/tray.py` (new) |
