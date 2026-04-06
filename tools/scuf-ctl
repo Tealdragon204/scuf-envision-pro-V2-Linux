@@ -54,6 +54,9 @@ def main():
         except json.JSONDecodeError:
             print(raw)
             return
+        if data.get("status") == "searching_for_controller":
+            print("Driver is running — waiting for controller to connect")
+            return
         print(f"Profile:    {data.get('profile', '?')}")
         profiles = data.get('profiles', [])
         print(f"Profiles:   {', '.join(profiles) if profiles else 'none'}")

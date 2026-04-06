@@ -23,7 +23,7 @@ import evdev
 from evdev import ecodes
 
 from .config import load_config, poll_timeout_ms as _poll_timeout_ms
-from .discovery import DiscoveredDevice, discover_scuf, discover_scuf_with_retry, find_competing_gamepads
+from .discovery import DiscoveredDevice, discover_scuf, find_competing_gamepads
 from .input_filter import InputFilter
 from .ipc import IPCServer
 from .profile import ProfileManager
@@ -41,7 +41,7 @@ class BridgeService:
 
     def __init__(self, discovered: DiscoveredDevice, filter_config: dict = None,
                  reconnect: bool = False, rumble_enabled: bool = False,
-                 initial_profile: str | None = None):
+                 initial_profile: str | None = None, ipc_server=None):
         self.discovered = discovered
         self.filter = InputFilter(**(filter_config or {}))
         self.gamepad = VirtualGamepad()
@@ -57,7 +57,7 @@ class BridgeService:
         self._grabbed_devices = []
         self._running = False
         self._profile: ProfileManager | None = None
-        self._ipc: IPCServer | None = None
+        self._ipc: IPCServer | None = ipc_server
 
         self._raw_left_x = 0
         self._raw_left_y = 0
@@ -102,11 +102,11 @@ class BridgeService:
                     log.warning("--profile %r not found in config, using default",
                                 self._initial_profile)
 
-            try:
-                self._ipc = IPCServer()
-            except OSError:
-                log.error("IPC socket unavailable — scuf-ctl will not work", exc_info=True)
-                self._ipc = None
+            if self._ipc is None:
+                try:
+                    self._ipc = IPCServer()
+                except OSError:
+                    log.error("IPC socket unavailable — scuf-ctl will not work", exc_info=True)
 
             self._open_devices()
             self._suppress_competing_gamepads()
@@ -399,16 +399,52 @@ class BridgeService:
         log.info("Cleanup complete")
 
 
+def _sleep_polling_ipc(ipc, duration: float) -> None:
+    """Sleep for duration seconds, servicing any IPC requests that arrive."""
+    if ipc is None:
+        time.sleep(duration)
+        return
+    poll = select.poll()
+    poll.register(ipc.fileno(), select.POLLIN)
+    deadline = time.monotonic() + duration
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        for _fd, _ in poll.poll(min(remaining * 1000, 100)):
+            ipc.handle_request(None, None)
+
+
+def _discover_with_ipc_poll(ipc, max_attempts: int = 15, interval: float = 2.0):
+    for attempt in range(1, max_attempts + 1):
+        result = discover_scuf()
+        if result is not None:
+            return result
+        if attempt < max_attempts:
+            log.info("Controller not found, waiting for device enumeration... "
+                     "(attempt %d/%d, next retry in %.0fs)", attempt, max_attempts, interval)
+            _sleep_polling_ipc(ipc, interval)
+    return None
+
+
 def run(initial_profile: str | None = None):
     """Entry point: discover device and run the bridge."""
     from . import __version__
     log.info("SCUF Envision Pro V2 Linux Driver v%s starting...", __version__)
 
-    discovered = discover_scuf_with_retry()
+    ipc = None
+    try:
+        ipc = IPCServer()
+    except OSError:
+        log.error("IPC socket unavailable — scuf-ctl will not work", exc_info=True)
+
+    discovered = _discover_with_ipc_poll(ipc)
     if discovered is None:
         log.error("No SCUF Envision Pro V2 controller found after 30s!")
         log.error("Make sure the controller is plugged in via USB or wireless receiver is connected.")
         log.error("Check: lsusb | grep 1b1c")
+        if ipc:
+            ipc.close()
         sys.exit(1)
 
     log.info("Found controller: %s", discovered)
@@ -434,5 +470,5 @@ def run(initial_profile: str | None = None):
         log.info("Wireless mode: reconnection on disconnect is enabled")
 
     bridge = BridgeService(discovered, reconnect=reconnect, rumble_enabled=rumble_enabled,
-                           initial_profile=initial_profile)
+                           initial_profile=initial_profile, ipc_server=ipc)
     bridge.start()
