@@ -70,10 +70,10 @@ TRIGGER_MIN = 0
 TRIGGER_MAX = 1023
 
 AXIS_INFO = {
-    ecodes.ABS_X:     evdev.AbsInfo(value=0, min=STICK_MIN, max=STICK_MAX, fuzz=16, flat=128, resolution=0),
-    ecodes.ABS_Y:     evdev.AbsInfo(value=0, min=STICK_MIN, max=STICK_MAX, fuzz=16, flat=128, resolution=0),
-    ecodes.ABS_RX:    evdev.AbsInfo(value=0, min=STICK_MIN, max=STICK_MAX, fuzz=16, flat=128, resolution=0),
-    ecodes.ABS_RY:    evdev.AbsInfo(value=0, min=STICK_MIN, max=STICK_MAX, fuzz=16, flat=128, resolution=0),
+    ecodes.ABS_X:     evdev.AbsInfo(value=0, min=STICK_MIN, max=STICK_MAX, fuzz=8, flat=0, resolution=0),
+    ecodes.ABS_Y:     evdev.AbsInfo(value=0, min=STICK_MIN, max=STICK_MAX, fuzz=8, flat=0, resolution=0),
+    ecodes.ABS_RX:    evdev.AbsInfo(value=0, min=STICK_MIN, max=STICK_MAX, fuzz=8, flat=0, resolution=0),
+    ecodes.ABS_RY:    evdev.AbsInfo(value=0, min=STICK_MIN, max=STICK_MAX, fuzz=8, flat=0, resolution=0),
     ecodes.ABS_Z:     evdev.AbsInfo(value=0, min=TRIGGER_MIN, max=TRIGGER_MAX, fuzz=0, flat=0, resolution=0),
     ecodes.ABS_RZ:    evdev.AbsInfo(value=0, min=TRIGGER_MIN, max=TRIGGER_MAX, fuzz=0, flat=0, resolution=0),
     ecodes.ABS_HAT0X: evdev.AbsInfo(value=0, min=-1, max=1, fuzz=0, flat=0, resolution=0),
@@ -123,7 +123,15 @@ RGB_FRAME_SIZE           = 27  # 3 planes × 9 LEDs
 # --- Polling ---
 POLL_TIMEOUT_MS = 2  # 500 Hz — matches hardware report rate (wired + Slipstream wireless)
 
-# --- Deadzone defaults ---
-STICK_DEADZONE = 3500          # ~10.7% radial deadzone
-TRIGGER_DEADZONE = 10          # Minimal trigger deadzone
-STICK_JITTER_THRESHOLD = 64    # Ignore changes smaller than this
+# --- Analog deadzone HID command bytes (from OLH scufenvisionproV2W) ---
+# Three-step protocol per device: init → write min DZ value → write max DZ value.
+# Values 0–15; combined with RGB_CMD_INIT_WRITE prefix via _packet() in hid.py.
+_DZ_INIT = [bytes([0x80, 0x00]), bytes([0x81, 0x00]), bytes([0x7e, 0x00]), bytes([0x7f, 0x00])]
+_DZ_MIN  = [bytes([0x7c, 0x00]), bytes([0x7d, 0x00]), bytes([0x7a, 0x00]), bytes([0x7b, 0x00])]
+_DZ_MAX  = [bytes([0xdd, 0x00]), bytes([0xde, 0x00]), bytes([0xdb, 0x00]), bytes([0xdc, 0x00])]
+# Index order: 0=left stick, 1=right stick, 2=left trigger, 3=right trigger
+
+# --- Deadzone defaults (Hall Effect conservative) ---
+STICK_DEADZONE = 200           # ~0.6% radial — handles gravity/hand-shake only
+TRIGGER_DEADZONE = 5           # Minimal trigger floor
+STICK_JITTER_THRESHOLD = 32    # Hall Effect: much less noisy than potentiometers

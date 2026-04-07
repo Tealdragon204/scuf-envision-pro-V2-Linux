@@ -13,7 +13,8 @@ import time
 import logging
 
 from .constants import (RGB_CMD_OPEN_ENDPOINT, RGB_CMD_WRITE_COLOR, RGB_NUM_LEDS,
-                        RGB_CMD_INIT_WRITE, RGB_CMD_TRIGGER_BACKEND, RGB_CMD_ECO_MODE_OFF)
+                        RGB_CMD_INIT_WRITE, RGB_CMD_TRIGGER_BACKEND, RGB_CMD_ECO_MODE_OFF,
+                        _DZ_INIT, _DZ_MIN, _DZ_MAX)
 
 log = logging.getLogger(__name__)
 
@@ -120,6 +121,36 @@ def _read(fd: int, timeout: float) -> bytes:
     """Read one HID report with a timeout; returns empty bytes on timeout."""
     r, _, _ = select.select([fd], [], [], timeout)
     return os.read(fd, _REPORT_SIZE) if r else b''
+
+
+def setup_analog_deadzones(hidraw_path: str, connection_type: str,
+                           left_stick: int, right_stick: int,
+                           left_trigger: int, right_trigger: int) -> None:
+    """Send hardware deadzone registers to firmware. Values clamped to 0–15.
+
+    Uses the same three-step HID protocol as RGB init (OLH scufenvisionproV2W):
+    init register → write min DZ value → write max DZ value.
+    """
+    endpoint = _ENDPOINT_WIRELESS if connection_type == "wireless" else _ENDPOINT_WIRED
+    values = [max(0, min(15, v)) for v in (left_stick, right_stick, left_trigger, right_trigger)]
+    try:
+        fd = os.open(hidraw_path, os.O_RDWR)
+    except OSError as e:
+        log.warning("Analog deadzone setup failed (open %s): %s", hidraw_path, e)
+        return
+    try:
+        for i, val in enumerate(values):
+            os.write(fd, _packet(endpoint, RGB_CMD_INIT_WRITE + _DZ_INIT[i]))
+            _read(fd, 0.1)
+            os.write(fd, _packet(endpoint, RGB_CMD_INIT_WRITE + _DZ_MIN[i] + bytes([val])))
+            _read(fd, 0.1)
+            os.write(fd, _packet(endpoint, RGB_CMD_INIT_WRITE + _DZ_MAX[i] + bytes([val])))
+            _read(fd, 0.1)
+        log.info("HW deadzones: sticks L=%d R=%d triggers L=%d R=%d", *values)
+    except OSError as e:
+        log.warning("Analog deadzone setup failed (write): %s", e)
+    finally:
+        os.close(fd)
 
 
 class BatteryReader:

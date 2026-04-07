@@ -58,6 +58,19 @@ DEFAULTS = {
         "speed": "1.0",
         "brightness": "0",
     },
+    "input": {
+        "left_stick_deadzone_hw":    "2",
+        "right_stick_deadzone_hw":   "2",
+        "left_stick_deadzone_sw":    "200",
+        "right_stick_deadzone_sw":   "200",
+        "left_stick_anti_deadzone":  "0",
+        "right_stick_anti_deadzone": "0",
+        "left_trigger_deadzone_hw":  "1",
+        "right_trigger_deadzone_hw": "1",
+        "left_trigger_deadzone_sw":  "5",
+        "right_trigger_deadzone_sw": "5",
+        "jitter_threshold":          "32",
+    },
 }
 
 
@@ -246,6 +259,37 @@ def rgb_state_params(state: str, profile_name: str | None = None) -> dict:
         brightness = 100
     return dict(mode=mode, r=r, g=g, b=b, r2=r2, g2=g2, b2=b2,
                 speed=speed, brightness=brightness)
+
+
+def input_params(profile_name: str | None = None) -> dict:
+    """Return input filter configuration, with optional per-profile override.
+
+    Looks up [profile.NAME.input] first if profile_name given; falls back to [input].
+    """
+    config = load_config()
+    section = f"profile.{profile_name}.input" if profile_name else None
+    if not (section and config.has_section(section)):
+        section = "input"
+
+    def gi(key, default, lo, hi):
+        try:
+            return max(lo, min(hi, int(config.get(section, key, fallback=str(default)))))
+        except ValueError:
+            return default
+
+    return {
+        "left_stick_deadzone_hw":    gi("left_stick_deadzone_hw",    2,   0, 15),
+        "right_stick_deadzone_hw":   gi("right_stick_deadzone_hw",   2,   0, 15),
+        "left_stick_deadzone_sw":    gi("left_stick_deadzone_sw",    200, 0, 32767),
+        "right_stick_deadzone_sw":   gi("right_stick_deadzone_sw",   200, 0, 32767),
+        "left_stick_anti_deadzone":  gi("left_stick_anti_deadzone",  0,   0, 32767),
+        "right_stick_anti_deadzone": gi("right_stick_anti_deadzone", 0,   0, 32767),
+        "left_trigger_deadzone_hw":  gi("left_trigger_deadzone_hw",  1,   0, 15),
+        "right_trigger_deadzone_hw": gi("right_trigger_deadzone_hw", 1,   0, 15),
+        "left_trigger_deadzone_sw":  gi("left_trigger_deadzone_sw",  5,   0, 1023),
+        "right_trigger_deadzone_sw": gi("right_trigger_deadzone_sw", 5,   0, 1023),
+        "jitter_threshold":          gi("jitter_threshold",          32,  0, 1000),
+    }
 
 
 def battery_notify_thresholds() -> list[int]:
