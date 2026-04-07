@@ -128,9 +128,18 @@ def setup_analog_deadzones(hidraw_path: str, connection_type: str,
                            left_trigger: int, right_trigger: int) -> None:
     """Send hardware deadzone registers to firmware. Values clamped to 0–15.
 
-    Uses the same three-step HID protocol as RGB init (OLH scufenvisionproV2W):
-    init register → write min DZ value → write max DZ value.
+    WARNING: The _DZ_INIT/_DZ_MIN/_DZ_MAX byte sequences in constants.py have NOT
+    been verified against a USB capture. Sending incorrect HID commands to the
+    firmware can mute axis reporting on the physical device. Do NOT call this
+    function until the byte sequences have been confirmed via Wireshark/USBmon
+    by capturing OLH setting deadzone values and comparing the raw HID reports.
+
+    Until verified, hardware deadzone config is intentionally not applied.
+    Software deadzone (InputFilter) is used exclusively.
     """
+    log.warning("setup_analog_deadzones() called but HW DZ byte sequences are unverified "
+                "— skipping firmware write to avoid corrupting axis state")
+    return
     endpoint = _ENDPOINT_WIRELESS if connection_type == "wireless" else _ENDPOINT_WIRED
     values = [max(0, min(15, v)) for v in (left_stick, right_stick, left_trigger, right_trigger)]
     try:

@@ -123,7 +123,11 @@ RGB_FRAME_SIZE           = 27  # 3 planes × 9 LEDs
 # --- Polling ---
 POLL_TIMEOUT_MS = 2  # 500 Hz — matches hardware report rate (wired + Slipstream wireless)
 
-# --- Analog deadzone HID command bytes (from OLH scufenvisionproV2W) ---
+# --- Analog deadzone HID command bytes (UNVERIFIED — do not use until confirmed) ---
+# These byte sequences were inferred from OLH RGB init patterns, NOT confirmed via
+# USB capture of OLH setting deadzone values. Sending wrong commands mutes axis
+# reporting on the physical device. Verify with Wireshark/USBmon before enabling.
+# setup_analog_deadzones() in hid.py is a no-op until verification is complete.
 # Three-step protocol per device: init → write min DZ value → write max DZ value.
 # Values 0–15; combined with RGB_CMD_INIT_WRITE prefix via _packet() in hid.py.
 _DZ_INIT = [bytes([0x80, 0x00]), bytes([0x81, 0x00]), bytes([0x7e, 0x00]), bytes([0x7f, 0x00])]
