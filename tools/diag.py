@@ -7,6 +7,7 @@ Use this to verify button mappings and axis ranges before running the driver.
 
 Usage:
     sudo python3 tools/diag.py
+    sudo python3 tools/diag.py --deadzone [--profile NAME]
 
 Press Ctrl+C to exit.
 """
@@ -14,6 +15,7 @@ Press Ctrl+C to exit.
 import sys
 import os
 import glob
+import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import evdev
@@ -206,8 +208,142 @@ def scan_all_scuf_devices():
     return found
 
 
+_STICK_AXIS_LABELS = {
+    ecodes.ABS_X:  "LEFT  X",
+    ecodes.ABS_Y:  "LEFT  Y",
+    ecodes.ABS_RX: "RIGHT X",
+    ecodes.ABS_RY: "RIGHT Y",
+}
+_TRIGGER_AXIS_LABELS = {
+    ecodes.ABS_Z:  "L.TRIG",
+    ecodes.ABS_RZ: "R.TRIG",
+}
+
+
+def run_deadzone_mode(profile_name=None):
+    """Show current deadzone config and live filtered axis output."""
+    from scuf_envision.config import input_params
+    from scuf_envision import __version__
+
+    print("=" * 65)
+    print(f"SCUF Envision Pro V2 - Deadzone Diagnostic v{__version__}")
+    print("=" * 65)
+    print()
+
+    p = input_params(profile_name)
+    section = f"[profile.{profile_name}.input]" if profile_name else "[input]"
+    print(f"Active config section: {section}")
+    print()
+    print("  Hardware deadzone (firmware registers, 0–15):")
+    print(f"    Left  stick:   {p['left_stick_deadzone_hw']}")
+    print(f"    Right stick:   {p['right_stick_deadzone_hw']}")
+    print(f"    Left  trigger: {p['left_trigger_deadzone_hw']}")
+    print(f"    Right trigger: {p['right_trigger_deadzone_hw']}")
+    print()
+    print("  Software deadzone (driver, applied after HW):")
+    print(f"    Left  stick:   {p['left_stick_deadzone_sw']}  (of ±32767)")
+    print(f"    Right stick:   {p['right_stick_deadzone_sw']}  (of ±32767)")
+    print(f"    Left  trigger: {p['left_trigger_deadzone_sw']}  (of 0–1023)")
+    print(f"    Right trigger: {p['right_trigger_deadzone_sw']}  (of 0–1023)")
+    print()
+    print("  Anti-deadzone (output floor, 0 = off):")
+    print(f"    Left  stick:   {p['left_stick_anti_deadzone']}")
+    print(f"    Right stick:   {p['right_stick_anti_deadzone']}")
+    print()
+    print(f"  Jitter threshold: {p['jitter_threshold']}")
+    print()
+
+    # Hardware DZ note — write-only registers
+    print("  NOTE: Hardware deadzone registers are write-only (no read-back).")
+    print("  Verify they were sent by checking driver logs:")
+    print("    journalctl -u scuf-envision | grep 'HW deadzones'")
+    print()
+
+    # Check flat=0 on virtual device
+    virtual = find_virtual_device()
+    if virtual:
+        raw_caps = virtual.capabilities(verbose=False)
+        abs_entries = raw_caps.get(ecodes.EV_ABS, [])
+        flat_val = None
+        for entry in abs_entries:
+            if isinstance(entry, tuple) and entry[0] == ecodes.ABS_X:
+                flat_val = entry[1].flat
+                break
+        if flat_val is not None:
+            status = "PASS" if flat_val == 0 else f"WARN (flat={flat_val}, expected 0)"
+            print(f"  uinput flat on ABS_X: {status}")
+        print()
+    else:
+        print("  Bridge not running — skipping uinput flat check.")
+        print()
+
+    # Live event display
+    dev = virtual or None
+    if dev is None:
+        from scuf_envision.discovery import discover_scuf
+        discovered = discover_scuf()
+        if discovered:
+            try:
+                dev = evdev.InputDevice(discovered.event_path)
+            except OSError:
+                pass
+
+    if dev is None:
+        print("No device found — cannot show live axis output.")
+        return
+
+    mode = "virtual (filtered)" if virtual else "raw (unfiltered)"
+    print(f"  Reading from: {dev.path} [{mode}]")
+    print("  Move sticks and triggers to see values.")
+    print("  Press Ctrl+C to exit.")
+    print()
+    print(f"  {'AXIS':<10}  {'VALUE':>8}  {'NOTE'}")
+    print("  " + "-" * 40)
+
+    try:
+        for event in dev.read_loop():
+            if event.type == ecodes.EV_SYN:
+                continue
+            if event.type != ecodes.EV_ABS:
+                continue
+
+            code, val = event.code, event.value
+            if code in _STICK_AXIS_LABELS:
+                label = _STICK_AXIS_LABELS[code]
+                note = "(deadzone)" if val == 0 else ""
+                # Show anti-dz floor reminder when output is non-zero
+                anti = (p['left_stick_anti_deadzone'] if code in (ecodes.ABS_X, ecodes.ABS_Y)
+                        else p['right_stick_anti_deadzone'])
+                if val != 0 and anti and abs(val) < anti:
+                    note = f"(below anti-dz floor {anti})"
+                print(f"  {label:<10}  {val:>8}  {note}")
+            elif code in _TRIGGER_AXIS_LABELS:
+                label = _TRIGGER_AXIS_LABELS[code]
+                print(f"  {label:<10}  {val:>8}")
+    except KeyboardInterrupt:
+        print("\nDone.")
+    finally:
+        if not virtual:
+            dev.close()
+
+
 def main():
     from scuf_envision import __version__
+
+    parser = argparse.ArgumentParser(
+        description="SCUF Envision Pro V2 Diagnostic Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--deadzone", action="store_true",
+                        help="Show deadzone config and live filtered axis output")
+    parser.add_argument("--profile", metavar="NAME", default=None,
+                        help="Profile name to load config from (used with --deadzone)")
+    args = parser.parse_args()
+
+    if args.deadzone:
+        run_deadzone_mode(profile_name=args.profile)
+        return
+
     print("=" * 60)
     print(f"SCUF Envision Pro V2 - Diagnostic Tool v{__version__}")
     print("=" * 60)

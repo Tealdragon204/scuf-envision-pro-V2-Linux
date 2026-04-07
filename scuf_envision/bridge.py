@@ -125,6 +125,8 @@ class BridgeService:
             self._sleep_after = rgb_sleep_after()
             self._last_input_time = time.monotonic()
 
+            self._reload_input_config()
+
             if self._ipc is None:
                 try:
                     self._ipc = IPCServer()
@@ -222,7 +224,7 @@ class BridgeService:
                         self._profile, self._build_status_state(),
                         extras={
                             "set_rgb": self._set_rgb_mode,
-                            "on_profile_switch": lambda: setattr(self, '_rgb_activity_state', ''),
+                            "on_profile_switch": self._on_profile_switch,
                         }
                     )
 
@@ -272,13 +274,13 @@ class BridgeService:
                                       ecodes.ABS_RX, ecodes.ABS_RY)
         elif code == ecodes.ABS_RX:
             # SCUF ABS_RX -> Left Trigger
-            filtered = self.filter.filter_trigger(value)
+            filtered = self.filter.filter_trigger(value, side='left')
             filtered, changed = self.filter.suppress_jitter("lt", filtered)
             if changed:
                 self.gamepad.emit_axis(ecodes.ABS_Z, filtered)
         elif code == ecodes.ABS_RY:
             # SCUF ABS_RY -> Right Trigger
-            filtered = self.filter.filter_trigger(value)
+            filtered = self.filter.filter_trigger(value, side='right')
             filtered, changed = self.filter.suppress_jitter("rt", filtered)
             if changed:
                 self.gamepad.emit_axis(ecodes.ABS_RZ, filtered)
@@ -333,12 +335,40 @@ class BridgeService:
 
     def _emit_filtered_stick(self, stick_name: str, raw_x: int, raw_y: int,
                               out_x_code: int, out_y_code: int):
-        fx, fy = self.filter.filter_stick(raw_x, raw_y)
+        fx, fy = self.filter.filter_stick(raw_x, raw_y, stick=stick_name)
         fx, x_changed = self.filter.suppress_jitter(f"{stick_name}_x", fx)
         fy, y_changed = self.filter.suppress_jitter(f"{stick_name}_y", fy)
         if x_changed or y_changed:
             self.gamepad.emit_axis(out_x_code, fx)
             self.gamepad.emit_axis(out_y_code, fy)
+
+    def _reload_input_config(self) -> None:
+        """Rebuild InputFilter from config and re-send hardware deadzone registers."""
+        from .config import input_params
+        from .hid import setup_analog_deadzones
+        p = input_params(self._profile.active_name if self._profile else None)
+        self.filter = InputFilter(
+            left_stick_deadzone=p['left_stick_deadzone_sw'],
+            right_stick_deadzone=p['right_stick_deadzone_sw'],
+            left_stick_anti_dz=p['left_stick_anti_deadzone'],
+            right_stick_anti_dz=p['right_stick_anti_deadzone'],
+            left_trigger_deadzone=p['left_trigger_deadzone_sw'],
+            right_trigger_deadzone=p['right_trigger_deadzone_sw'],
+            jitter_threshold=p['jitter_threshold'],
+        )
+        if self.discovered and self.discovered.control_hidraw_path:
+            setup_analog_deadzones(
+                self.discovered.control_hidraw_path,
+                self.discovered.connection_type,
+                left_stick=p['left_stick_deadzone_hw'],
+                right_stick=p['right_stick_deadzone_hw'],
+                left_trigger=p['left_trigger_deadzone_hw'],
+                right_trigger=p['right_trigger_deadzone_hw'],
+            )
+
+    def _on_profile_switch(self) -> None:
+        self._rgb_activity_state = ''
+        self._reload_input_config()
 
     def _check_rgb_activity(self) -> None:
         if not self._activity_tracking or self._rgb is None:
@@ -465,6 +495,7 @@ class BridgeService:
                         self._start_rgb()
                     except OSError as e:
                         log.warning("RGB unavailable after reconnect: %s", e)
+                self._reload_input_config()
                 return True
             except OSError as e:
                 log.warning("Device found but failed to open: %s", e)
