@@ -76,6 +76,9 @@ class IPCServer:
             name = cmd[len("profile "):].strip()
             try:
                 profile_mgr.switch(name)
+                cb = (extras or {}).get("on_profile_switch")
+                if cb:
+                    cb()
                 return "ok"
             except KeyError:
                 return f"error: unknown profile '{name}'"
@@ -146,7 +149,7 @@ class IPCServer:
                 if rest and mode != "storm":
                     speed = float(rest[0])
             # Modes that accept: [color] [speed]
-            elif mode in ("wave", "static"):
+            elif mode in ("breathe", "static"):
                 if rest:
                     c = self._parse_hex(rest[0])
                     if c is None:
