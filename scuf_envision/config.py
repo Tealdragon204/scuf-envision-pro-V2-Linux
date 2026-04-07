@@ -33,6 +33,30 @@ DEFAULTS = {
         "color2": "0,0,255",
         "speed": "1.0",
         "brightness": "100",
+        "activity_tracking": "false",
+        "idle_after": "30",
+        "sleep_after": "300",
+    },
+    "rgb.active": {
+        "mode": "static",
+        "color": "255,255,255",
+        "color2": "0,0,255",
+        "speed": "1.0",
+        "brightness": "100",
+    },
+    "rgb.idle": {
+        "mode": "static",
+        "color": "255,255,255",
+        "color2": "0,0,255",
+        "speed": "1.0",
+        "brightness": "20",
+    },
+    "rgb.sleep": {
+        "mode": "off",
+        "color": "0,0,0",
+        "color2": "0,0,0",
+        "speed": "1.0",
+        "brightness": "0",
     },
 }
 
@@ -158,6 +182,70 @@ def rgb_color() -> tuple[int, int, int]:
 def rgb_brightness() -> int:
     """Return brightness 0-100 from config."""
     return max(0, min(100, load_config().getint("rgb", "brightness", fallback=100)))
+
+
+def rgb_activity_tracking() -> bool:
+    """Return True if activity-based RGB state machine is enabled."""
+    return load_config().getboolean("rgb", "activity_tracking", fallback=False)
+
+
+def rgb_idle_after() -> float:
+    """Return seconds of no input before transitioning to idle state."""
+    try:
+        return max(1.0, float(load_config().get("rgb", "idle_after", fallback="30")))
+    except ValueError:
+        return 30.0
+
+
+def rgb_sleep_after() -> float:
+    """Return seconds of no input before transitioning to sleep state."""
+    try:
+        return max(1.0, float(load_config().get("rgb", "sleep_after", fallback="300")))
+    except ValueError:
+        return 300.0
+
+
+def _parse_color(raw: str, fallback: tuple[int, int, int]) -> tuple[int, int, int]:
+    try:
+        parts = [max(0, min(255, int(x.strip()))) for x in raw.split(",")]
+        if len(parts) == 3:
+            return tuple(parts)
+    except ValueError:
+        pass
+    return fallback
+
+
+def rgb_state_params(state: str, profile_name: str | None = None) -> dict:
+    """Return full RGB param dict for an activity state.
+
+    Looks up [profile.NAME.rgb.STATE] first if profile_name is given and the
+    section exists; falls back to [rgb.STATE]. Returns keys:
+    mode, r, g, b, r2, g2, b2, speed, brightness.
+    """
+    from .rgb import RGB_MODES
+    config = load_config()
+    section = f"profile.{profile_name}.rgb.{state}" if profile_name else None
+    if not (section and config.has_section(section)):
+        section = f"rgb.{state}"
+
+    def get(key, fallback):
+        return config.get(section, key, fallback=fallback) if config.has_section(section) else fallback
+
+    mode = get("mode", "static" if state != "sleep" else "off")
+    if mode not in RGB_MODES:
+        mode = "static"
+    r, g, b = _parse_color(get("color", "255,255,255"), (255, 255, 255))
+    r2, g2, b2 = _parse_color(get("color2", "0,0,255"), (0, 0, 255))
+    try:
+        speed = max(0.1, min(20.0, float(get("speed", "1.0"))))
+    except ValueError:
+        speed = 1.0
+    try:
+        brightness = max(0, min(100, int(get("brightness", "100"))))
+    except ValueError:
+        brightness = 100
+    return dict(mode=mode, r=r, g=g, b=b, r2=r2, g2=g2, b2=b2,
+                speed=speed, brightness=brightness)
 
 
 def battery_notify_thresholds() -> list[int]:

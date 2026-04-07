@@ -147,16 +147,12 @@ def _frame_colorshift(t, r, g, b, r2, g2, b2, speed, brightness, **_) -> bytes:
     return _frame([rv]*9, [gv]*9, [bv]*9)
 
 
-def _frame_wave(t, r, g, b, speed, brightness, **_) -> bytes:
-    # Sinusoidal intensity modulation sweeping across the LED array
+def _frame_breathe(t, r, g, b, speed, brightness, **_) -> bytes:
+    # All LEDs pulse in unison — classic Apple-style breathe effect
     s = brightness / 100
-    rv, gv, bv = [], [], []
-    for i in range(RGB_NUM_LEDS):
-        intensity = (math.sin(i / RGB_NUM_LEDS * math.pi * 2 - t * 4 / max(speed, 0.1)) + 1) / 2
-        rv.append(r * intensity * s)
-        gv.append(g * intensity * s)
-        bv.append(b * intensity * s)
-    return _frame(rv, gv, bv)
+    intensity = (math.sin(t * math.pi / max(speed, 0.1)) + 1) / 2
+    v = intensity * s
+    return _frame([r * v] * 9, [g * v] * 9, [b * v] * 9)
 
 
 _storm_state = [False] * RGB_NUM_LEDS
@@ -221,7 +217,7 @@ _DISPATCH = {
     'rotator':         _frame_rotator,
     'colorpulse':      _frame_colorpulse,
     'colorshift':      _frame_colorshift,
-    'wave':            _frame_wave,
+    'breathe':         _frame_breathe,
     'storm':           _frame_storm,
     'flickering':      _frame_flickering,
     'cpu-temperature': _frame_cpu_temperature,

@@ -55,6 +55,11 @@ class BridgeService:
         self._battery = None
         self._rgb = None
         self._rgb_animator = None
+        self._last_input_time: float = 0.0
+        self._rgb_activity_state: str = 'active'
+        self._activity_tracking: bool = False
+        self._idle_after: float = 30.0
+        self._sleep_after: float = 300.0
         self._physical = None
         self._grabbed_devices = []
         self._running = False
@@ -113,6 +118,12 @@ class BridgeService:
                 except KeyError:
                     log.warning("--profile %r not found in config, using default",
                                 self._initial_profile)
+
+            from .config import rgb_activity_tracking, rgb_idle_after, rgb_sleep_after
+            self._activity_tracking = rgb_activity_tracking()
+            self._idle_after = rgb_idle_after()
+            self._sleep_after = rgb_sleep_after()
+            self._last_input_time = time.monotonic()
 
             if self._ipc is None:
                 try:
@@ -191,6 +202,7 @@ class BridgeService:
 
         while self._running:
             events = poll.poll(timeout)
+            self._check_rgb_activity()
             if not events:
                 continue
 
@@ -206,10 +218,17 @@ class BridgeService:
                 elif ready_fd == vgpad_fd:
                     self._handle_ff_events()
                 elif ready_fd == ipc_fd:
-                    self._ipc.handle_request(self._profile, self._build_status_state(),
-                                             extras={"set_rgb": self._set_rgb_mode})
+                    self._ipc.handle_request(
+                        self._profile, self._build_status_state(),
+                        extras={
+                            "set_rgb": self._set_rgb_mode,
+                            "on_profile_switch": lambda: setattr(self, '_rgb_activity_state', ''),
+                        }
+                    )
 
     def _handle_event(self, event):
+        if event.type != ecodes.EV_SYN:
+            self._last_input_time = time.monotonic()
         if event.type == ecodes.EV_KEY:
             self._handle_button(event)
         elif event.type == ecodes.EV_ABS:
@@ -321,14 +340,33 @@ class BridgeService:
             self.gamepad.emit_axis(out_x_code, fx)
             self.gamepad.emit_axis(out_y_code, fy)
 
+    def _check_rgb_activity(self) -> None:
+        if not self._activity_tracking or self._rgb is None:
+            return
+        elapsed = time.monotonic() - self._last_input_time
+        new = ('sleep' if elapsed >= self._sleep_after
+               else 'idle' if elapsed >= self._idle_after
+               else 'active')
+        if new == self._rgb_activity_state:
+            return
+        self._rgb_activity_state = new
+        from .config import rgb_state_params
+        p = rgb_state_params(new, self._profile.active_name if self._profile else None)
+        self._set_rgb_mode(p.pop('mode'), **p)
+        log.info("RGB activity state → %s", new)
+
     def _start_rgb(self) -> None:
         from .rgb import RGBAnimator
-        from .config import rgb_mode, rgb_color, rgb_color2, rgb_speed, rgb_brightness
-        r, g, b = rgb_color()
-        r2, g2, b2 = rgb_color2()
-        mode = rgb_mode()
-        params = dict(r=r, g=g, b=b, r2=r2, g2=g2, b2=b2,
-                      speed=rgb_speed(), brightness=rgb_brightness())
+        if self._activity_tracking:
+            from .config import rgb_state_params
+            params = rgb_state_params('active', self._profile.active_name if self._profile else None)
+        else:
+            from .config import rgb_mode, rgb_color, rgb_color2, rgb_speed, rgb_brightness
+            r, g, b = rgb_color()
+            r2, g2, b2 = rgb_color2()
+            params = dict(mode=rgb_mode(), r=r, g=g, b=b, r2=r2, g2=g2, b2=b2,
+                          speed=rgb_speed(), brightness=rgb_brightness())
+        mode = params.pop('mode')
         self._rgb_animator = RGBAnimator(self._rgb, mode, **params)
         self._rgb_animator.start()
         log.info("RGB mode: %s", mode)

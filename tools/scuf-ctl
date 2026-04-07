@@ -15,7 +15,7 @@ Usage:
     scuf-ctl rgb rotator [speed]               Rotating single hue
     scuf-ctl rgb colorpulse [RR GG] [speed]    Ping-pong between two colors
     scuf-ctl rgb colorshift [RR GG] [speed]    Alternating shift between two colors
-    scuf-ctl rgb wave [RRGGBB] [speed]         Sinusoidal wave
+    scuf-ctl rgb breathe [RRGGBB] [speed]      All LEDs pulse in unison
     scuf-ctl rgb storm [RR GG]                 Random per-LED color flips
     scuf-ctl rgb flickering [RR GG] [speed]    Candle flicker
     scuf-ctl rgb cpu-temperature [speed]       Blue (cool) → red (hot)

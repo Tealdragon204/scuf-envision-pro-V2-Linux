@@ -30,12 +30,12 @@ notify_thresholds = 20,10,5,1
 [rgb]
 # Animation mode. Options:
 #   static, off, rainbow, pastelrainbow, watercolor, rotator,
-#   colorpulse, colorshift, wave, storm, flickering, cpu-temperature
+#   colorpulse, colorshift, breathe, storm, flickering, cpu-temperature
 # To change live without restart: scuf-ctl rgb MODE [args...]
 mode = static
 
-# Primary color as R,G,B (each 0-255). Used by static, wave, and as the start
-# color for two-color modes (colorpulse, colorshift, storm, flickering).
+# Primary color as R,G,B (each 0-255). Used by static, breathe, and as the
+# start color for two-color modes (colorpulse, colorshift, storm, flickering).
 color = 255,255,255
 
 # Secondary/end color for two-color animation modes.
@@ -46,6 +46,43 @@ speed = 1.0
 
 # Brightness as a percentage (0-100).
 brightness = 100
+
+# --------------------------------------------------------------------------
+# Activity-based RGB — automatically changes mode based on controller use.
+# Set activity_tracking = true to enable. When disabled (default), the mode/
+# color/brightness above apply at all times.
+# --------------------------------------------------------------------------
+activity_tracking = false
+
+# Seconds of no input before entering idle state.
+idle_after = 30
+
+# Seconds of no input before entering sleep state.
+sleep_after = 300
+
+# RGB config while the controller is actively being used.
+[rgb.active]
+mode = static
+color = 255,255,255
+color2 = 0,0,255
+speed = 1.0
+brightness = 100
+
+# RGB config after idle_after seconds of no input.
+[rgb.idle]
+mode = static
+color = 255,255,255
+color2 = 0,0,255
+speed = 1.0
+brightness = 20
+
+# RGB config after sleep_after seconds of no input.
+[rgb.sleep]
+mode = off
+color = 0,0,0
+color2 = 0,0,0
+speed = 1.0
+brightness = 0
 
 [driver]
 # Event loop poll timeout in milliseconds.
@@ -98,6 +135,26 @@ poll_timeout_ms = 2
 #
 # Steam / Heroic launch option syntax:
 #   scuf-profile BIOSHOCK %command%
+#
+# ---------------------------------------------------------------------------
+# Per-profile RGB activity overrides
+# ---------------------------------------------------------------------------
+# Each profile can override [rgb.active], [rgb.idle], and [rgb.sleep] with a
+# [profile.NAME.rgb.STATE] section. Falls back to global [rgb.*] if not set.
+# Only the keys you specify are overridden; unset keys still use the global.
+#
+# Example: turn LEDs off while gaming, dim on idle
+# ---------------------------------------------------------------------------
+# [profile.BIOSHOCK.rgb.active]
+# mode = off
+#
+# [profile.BIOSHOCK.rgb.idle]
+# mode = static
+# color = 20,20,20
+# brightness = 10
+#
+# [profile.BIOSHOCK.rgb.sleep]
+# mode = off
 #
 # ---------------------------------------------------------------------------
 # Example: map paddles to face buttons
