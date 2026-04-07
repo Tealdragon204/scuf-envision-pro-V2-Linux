@@ -77,10 +77,12 @@ def _frame_static(r, g, b, brightness, **_) -> bytes:
 
 
 def _frame_rainbow(t, speed, brightness, **_) -> bytes:
+    # speed=1 → 1 full rotation per 10s; speed=10 → 1 rotation/sec
     s = brightness / 100
+    rate = speed * 0.1
     rv, gv, bv = [], [], []
     for i in range(RGB_NUM_LEDS):
-        pos = ((i / RGB_NUM_LEDS) + t * 4 / max(speed, 0.1)) % 1.0
+        pos = ((i / RGB_NUM_LEDS) + t * rate) % 1.0
         r, g, b = _hue_to_rgb(pos)
         rv.append(r*s); gv.append(g*s); bv.append(b*s)
     return _frame(rv, gv, bv)
@@ -89,9 +91,10 @@ def _frame_rainbow(t, speed, brightness, **_) -> bytes:
 def _frame_pastelrainbow(t, speed, brightness, **_) -> bytes:
     s = brightness / 100
     m = len(_PASTEL)
+    rate = speed * 0.1
     rv, gv, bv = [], [], []
     for i in range(RGB_NUM_LEDS):
-        pos = ((i / RGB_NUM_LEDS) + t * 4 / max(speed, 0.1)) % 1.0
+        pos = ((i / RGB_NUM_LEDS) + t * rate) % 1.0
         idx = pos * m
         lo = int(idx) % m
         hi = (lo + 1) % m
@@ -105,26 +108,28 @@ def _frame_pastelrainbow(t, speed, brightness, **_) -> bytes:
 
 def _frame_watercolor(t, speed, brightness, **_) -> bytes:
     # HSV with low saturation gives the watercolor wash effect (OLH: s=0.4)
+    # speed=1 → 1 full rotation per 15s (more ambient than rainbow)
     s = brightness / 100
+    rate = speed / 15.0
     rv, gv, bv = [], [], []
     for i in range(RGB_NUM_LEDS):
-        pos = ((i / RGB_NUM_LEDS) + t / max(speed, 0.1)) % 1.0
+        pos = ((i / RGB_NUM_LEDS) + t * rate) % 1.0
         r, g, b = _hsv_to_rgb(pos, 0.4, 1.0)
         rv.append(r*s); gv.append(g*s); bv.append(b*s)
     return _frame(rv, gv, bv)
 
 
 def _frame_rotator(t, speed, brightness, **_) -> bytes:
-    # All LEDs same hue, hue rotates over time
+    # All LEDs same hue, hue rotates over time; speed=1 → 10s/rotation
     s = brightness / 100
-    r, g, b = _hue_to_rgb((t / max(speed, 0.1)) % 1.0)
+    r, g, b = _hue_to_rgb((t * speed * 0.1) % 1.0)
     return _frame([r*s]*9, [g*s]*9, [b*s]*9)
 
 
 def _frame_colorpulse(t, r, g, b, r2, g2, b2, speed, brightness, **_) -> bytes:
-    # Ping-pong lerp between color and color2
+    # Ping-pong lerp between color and color2; speed=1 → 4s cycle
     s = brightness / 100
-    cycle = t / max(speed, 0.1)
+    cycle = t * speed / 4.0
     p = cycle % 1.0
     if int(cycle) % 2:
         p = 1 - p
@@ -135,9 +140,9 @@ def _frame_colorpulse(t, r, g, b, r2, g2, b2, speed, brightness, **_) -> bytes:
 
 
 def _frame_colorshift(t, r, g, b, r2, g2, b2, speed, brightness, **_) -> bytes:
-    # Alternate direction on each full cycle (OLH colorshift behaviour)
+    # Alternating shift between two colors; speed=1 → 4s cycle
     s = brightness / 100
-    cycle = t / max(speed, 0.1)
+    cycle = t * speed / 4.0
     p = cycle % 1.0
     if int(cycle) % 2:
         p = 1 - p
@@ -149,8 +154,9 @@ def _frame_colorshift(t, r, g, b, r2, g2, b2, speed, brightness, **_) -> bytes:
 
 def _frame_breathe(t, r, g, b, speed, brightness, **_) -> bytes:
     # All LEDs pulse in unison — classic Apple-style breathe effect
+    # speed=1 → 4s period (2s in, 2s out); speed=2 → 2s period
     s = brightness / 100
-    intensity = (math.sin(t * math.pi / max(speed, 0.1)) + 1) / 2
+    intensity = (math.sin(t * math.pi * speed / 2.0) + 1) / 2
     v = intensity * s
     return _frame([r * v] * 9, [g * v] * 9, [b * v] * 9)
 
@@ -172,14 +178,16 @@ def _frame_storm(r, g, b, r2, g2, b2, brightness, **_) -> bytes:
 
 def _frame_flickering(t, r, g, b, r2, g2, b2, speed, brightness, **_) -> bytes:
     # Gradient across LEDs with random blackout (candle effect)
+    # speed=1 → subtle flicker; higher = more aggressive
     s = brightness / 100
     rv, gv, bv = [], [], []
+    flicker_range = max(1, int(RGB_NUM_LEDS / max(speed * 0.5, 0.01)))
     for i in range(RGB_NUM_LEDS):
         f = i / max(RGB_NUM_LEDS - 1, 1)
         cr = _lerp(r, r2, f)
         cg = _lerp(g, g2, f)
         cb = _lerp(b, b2, f)
-        if random.randint(0, max(1, int(RGB_NUM_LEDS * max(speed, 0.1)))) == 1:
+        if random.randint(0, flicker_range) == 0:
             cr = cg = cb = 0
         rv.append(cr*s); gv.append(cg*s); bv.append(cb*s)
     return _frame(rv, gv, bv)

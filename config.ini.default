@@ -41,7 +41,9 @@ color = 255,255,255
 # Secondary/end color for two-color animation modes.
 color2 = 0,0,255
 
-# Animation speed multiplier (0.1–20.0). Higher = faster.
+# Animation speed multiplier (0.1–20.0). Higher = faster, lower = slower.
+# speed=1.0 is a gentle default: rainbow takes ~10s per rotation, breathe ~4s.
+# Use 0.2–0.5 for very slow ambient effects; 5–10 for energetic ones.
 speed = 1.0
 
 # Brightness as a percentage (0-100).
