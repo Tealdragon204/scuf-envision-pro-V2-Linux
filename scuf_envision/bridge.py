@@ -343,9 +343,8 @@ class BridgeService:
             self.gamepad.emit_axis(out_y_code, fy)
 
     def _reload_input_config(self) -> None:
-        """Rebuild InputFilter from config and re-send hardware deadzone registers."""
+        """Rebuild InputFilter from config (per-profile or global [input] section)."""
         from .config import input_params
-        from .hid import setup_analog_deadzones
         p = input_params(self._profile.active_name if self._profile else None)
         self.filter = InputFilter(
             left_stick_deadzone=p['left_stick_deadzone_sw'],
@@ -356,15 +355,10 @@ class BridgeService:
             right_trigger_deadzone=p['right_trigger_deadzone_sw'],
             jitter_threshold=p['jitter_threshold'],
         )
-        if self.discovered and self.discovered.control_hidraw_path:
-            setup_analog_deadzones(
-                self.discovered.control_hidraw_path,
-                self.discovered.connection_type,
-                left_stick=p['left_stick_deadzone_hw'],
-                right_stick=p['right_stick_deadzone_hw'],
-                left_trigger=p['left_trigger_deadzone_hw'],
-                right_trigger=p['right_trigger_deadzone_hw'],
-            )
+        log.debug("Input filter reloaded: L_sw=%d R_sw=%d L_anti=%d R_anti=%d jitter=%d",
+                  p['left_stick_deadzone_sw'], p['right_stick_deadzone_sw'],
+                  p['left_stick_anti_deadzone'], p['right_stick_anti_deadzone'],
+                  p['jitter_threshold'])
 
     def _on_profile_switch(self) -> None:
         self._rgb_activity_state = ''

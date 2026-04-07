@@ -62,7 +62,7 @@ up to 5 min while waiting for controller reconnection.
 | 11 | IPC socket + `scuf-ctl` CLI + `scuf-profile` wrapper + named profiles in config | ✅ | `scuf_envision/config.py`, `bridge.py`, `tools/scuf-ctl`, `tools/scuf-profile` |
 | 12 | RGB control | ✅ | `scuf_envision/hid.py`, `scuf_envision/constants.py`, `scuf_envision/config.py` |
 | 13 | Vibration/haptics passthrough | ✅ | `scuf_envision/rumble.py`, `scuf_envision/hid.py`, `virtual_gamepad.py` |
-| 14 | Analog deadzone config (HW+SW per-stick, anti-deadzone, per-profile) | ✅ | `scuf_envision/constants.py`, `scuf_envision/hid.py`, `scuf_envision/input_filter.py`, `scuf_envision/config.py`, `bridge.py` |
+| 14 | Analog deadzone config (SW per-stick, anti-deadzone, per-profile; HW deadzones blocked pending USB capture verification) | ✅ | `scuf_envision/constants.py`, `scuf_envision/hid.py`, `scuf_envision/input_filter.py`, `scuf_envision/config.py`, `bridge.py` |
 | 15 | Tray app | Planned | `tools/tray.py` (new) |
 | 16 | Layers — per-profile layer stack, paddle/button layer switching, layer-switch `notify-send` with layer name | Planned | `bridge.py`, `scuf_envision/config.py` |
 | 17 | Macros — button-to-sequence bindings per layer, delay support | Planned | `bridge.py`, `scuf_envision/config.py` |
