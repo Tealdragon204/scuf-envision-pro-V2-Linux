@@ -21,14 +21,17 @@ fi
 # Step 1: Install dependencies
 echo "[1/8] Installing dependencies..."
 if command -v pacman &>/dev/null; then
-    pacman -S --noconfirm --needed python-evdev libnotify
+    pacman -S --noconfirm --needed python-evdev libnotify python-pystray python-pillow
 elif command -v apt &>/dev/null; then
-    apt install -y python3-evdev libnotify-bin
+    apt install -y python3-evdev libnotify-bin python3-pil
+    # pystray is not in most apt repos; fall back to pip
+    pip install --quiet pystray 2>/dev/null || true
 elif command -v dnf &>/dev/null; then
-    dnf install -y python3-evdev libnotify
+    dnf install -y python3-evdev libnotify python3-pillow
+    pip install --quiet pystray 2>/dev/null || true
 else
     echo "Unknown package manager. Please install python-evdev and libnotify manually."
-    echo "  pip install evdev"
+    echo "  pip install evdev pystray pillow"
 fi
 
 # Ensure 'input' group exists (safety net for minimal installs; usually pre-exists)
@@ -58,11 +61,19 @@ cp "$SCRIPT_DIR/uninstall.sh" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/tools/scuf-audio-toggle"
 chmod +x "$INSTALL_DIR/tools/scuf-ctl"
 chmod +x "$INSTALL_DIR/tools/scuf-profile"
+chmod +x "$INSTALL_DIR/tools/tray.py"
 ln -sf "$INSTALL_DIR/tools/scuf-audio-toggle" /usr/local/bin/scuf-audio-toggle
 ln -sf "$INSTALL_DIR/tools/scuf-ctl"          /usr/local/bin/scuf-ctl
 ln -sf "$INSTALL_DIR/tools/scuf-profile"      /usr/local/bin/scuf-profile
+ln -sf "$INSTALL_DIR/tools/tray.py"           /usr/local/bin/scuf-tray
 echo "  Installed to $INSTALL_DIR"
-echo "  Installed scuf-audio-toggle, scuf-ctl, scuf-profile to /usr/local/bin/"
+echo "  Installed scuf-audio-toggle, scuf-ctl, scuf-profile, scuf-tray to /usr/local/bin/"
+
+# Install XDG autostart entry (starts tray with the desktop session)
+AUTOSTART_DIR="/etc/xdg/autostart"
+mkdir -p "$AUTOSTART_DIR"
+cp "$SCRIPT_DIR/tools/scuf-tray.desktop" "$AUTOSTART_DIR/"
+echo "  Installed autostart entry to $AUTOSTART_DIR/scuf-tray.desktop"
 
 # Step 5: Install default config
 echo "[5/8] Installing default config..."

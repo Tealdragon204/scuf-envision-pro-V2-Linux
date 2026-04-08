@@ -423,6 +423,7 @@ class BridgeService:
             "connection": self.discovered.connection_type,
             "rumble": self._rumble_enabled,
             "rgb": self._rgb is not None,
+            "battery": self._battery.level if self._battery else -1,
             "pid": os.getpid(),
         }
 
