@@ -11,6 +11,8 @@ A userspace driver that makes the SCUF Envision Pro V2 controller work correctly
 - **RGB control** — 12 animation modes (static, rainbow, breathe, colorpulse, etc.); activity-based state changes; per-profile overrides
 - **Rumble / force feedback** — full FF_RUMBLE + FF_GAIN passthrough to the controller's motors
 - **Deadzone & anti-deadzone** — radial SW deadzone, jitter suppression, per-profile anti-deadzone to defeat in-game deadzones in older titles
+- **Response curves** — 4 presets (linear, aggressive, steady, relaxed) or fully custom 6-point piecewise curve; separate curve for sticks and triggers; per-profile override
+- **System tray** — notification-area icon with live connection/battery status, one-click profile switching, and RGB shortcuts
 - **Battery monitoring** — polls via HID raw interface, sends desktop notifications at configurable thresholds
 - **Wireless support** — auto-reconnect loop keeps the virtual gamepad alive for up to 5 min while the controller reconnects
 - **USB audio fix** — fixes broken hardware mixer and PipeWire/WirePlumber volume control
@@ -70,12 +72,13 @@ sudo bash install.sh
 ```
 
 This does everything automatically:
-- Installs dependencies: `python-evdev` (input handling) and `libnotify` (battery notifications)
+- Installs dependencies: `python-evdev`, `libnotify`, `pystray`, `pillow`
 - Loads the `uinput` kernel module (persists across reboots)
 - Installs udev rules (device permissions + hardware mixer init on plug)
 - Copies the driver to `/opt/scuf-envision`
 - Installs default config to `/etc/scuf-envision/config.ini`
-- Installs `scuf-audio-toggle`, `scuf-ctl`, and `scuf-profile` tools to `/usr/local/bin/`
+- Installs `scuf-audio-toggle`, `scuf-ctl`, `scuf-profile`, and `scuf-tray` tools to `/usr/local/bin/`
+- Installs `scuf-tray.desktop` to `/etc/xdg/autostart/` (tray starts with your desktop session)
 - Sets `SDL_GAMECONTROLLER_IGNORE_DEVICES` so Steam/SDL ignores the raw SCUF device
 - Installs and starts the systemd service (auto-starts on boot)
 - Installs the WirePlumber audio fix (headphone volume)
@@ -304,6 +307,47 @@ Shows the active config, current deadzone values, and annotated live axis events
 
 ---
 
+### Response Curves
+
+Shape the analog output of sticks and triggers with a piecewise-linear curve applied after the deadzone. Separate settings for sticks and triggers; per-profile override supported.
+
+```ini
+[input]
+# Options: linear, aggressive, steady, relaxed, custom
+stick_response_curve = linear
+trigger_response_curve = linear
+```
+
+| Preset | Shape | Best for |
+|--------|-------|----------|
+| `linear` | 1:1 (default) | Neutral — identical to no curve |
+| `aggressive` | ≈ √ (bows up) | Fast-paced games; quick max deflection |
+| `steady` | ≈ x² (bows down) | Precision aiming; more centre control |
+| `relaxed` | ≈ x³ (bows down more) | Maximum centre precision |
+| `custom` | Your own 6 points | Full control |
+
+**Custom curve** — define 6 (input%, output%) control points (same format as OpenLinkHub's `AnalogData.Points`):
+
+```ini
+[input]
+stick_response_curve = custom
+# 12 comma-separated values: x0,y0, x1,y1, ..., x5,y5 (percentages 0–100)
+stick_curve_points = 0,0, 10,5, 30,22, 55,52, 80,82, 100,100
+
+trigger_response_curve = custom
+trigger_curve_points = 0,0, 20,20, 40,40, 60,60, 80,80, 100,100
+```
+
+**Per-profile curve override:**
+
+```ini
+[profile.BIOSHOCK.input]
+stick_response_curve = steady
+trigger_response_curve = linear
+```
+
+---
+
 ### Battery Monitoring
 
 ```ini
@@ -402,6 +446,23 @@ scuf-profile BIOSHOCK %command%
 # Manual use:
 scuf-profile RACING ./game
 ```
+
+### scuf-tray
+
+System tray application. Starts automatically with the desktop session after install; can also be launched manually:
+
+```bash
+scuf-tray
+```
+
+The tray icon reflects driver state:
+- **Green** — controller connected (wired)
+- **Yellow** — controller connected (wireless)
+- **Red** — driver offline or searching for controller
+
+The menu shows connection status, battery level (when available), a profile switcher, and RGB shortcuts. The icon title includes the active profile name.
+
+> Requires `pystray` and `pillow` (`pip install pystray pillow` if not installed by the installer).
 
 ### scuf-audio-toggle
 
@@ -531,13 +592,13 @@ Reboot after removal.
 
 ```bash
 # Arch/Garuda
-sudo pacman -S python-evdev
+sudo pacman -S python-evdev python-pystray python-pillow
 
 # Ubuntu/Debian
-sudo apt install python3-evdev
+sudo apt install python3-evdev python3-pil && pip install pystray
 
 # Fedora
-sudo dnf install python3-evdev
+sudo dnf install python3-evdev python3-pillow && pip install pystray
 
 # Load uinput
 sudo modprobe uinput
@@ -637,6 +698,8 @@ scuf-envision-pro-V2-Linux/
     scuf-audio-toggle   # CLI: disable/enable SCUF audio
     scuf-ctl            # CLI: IPC client (profile switch, RGB, status, ping)
     scuf-profile        # Launch wrapper: activate profile, restore on exit
+    tray.py             # System tray app (pystray + pillow)
+    scuf-tray.desktop   # XDG autostart entry for tray app
   config.ini.default    # Default config template
   50-scuf-audio.conf    # WirePlumber config for headphone audio
   99-scuf-envision.rules
@@ -651,7 +714,6 @@ scuf-envision-pro-V2-Linux/
 
 | Phase | Feature |
 |---|---|
-| 15 | **Tray app** — system tray icon for quick profile/audio/rumble/RGB switching |
 | 16 | **Layers** — multiple button maps per profile; switch layers by holding a paddle; notification shows active layer name |
 | 17 | **Macros** — bind a button to a sequence of inputs with optional delays |
 | 18 | **Desktop layer** — persistent base layer across all profiles for window switching, media keys, etc. |
