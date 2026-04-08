@@ -221,11 +221,16 @@ _TRIGGER_AXIS_LABELS = {
 
 
 def _get_active_profile() -> str | None:
-    """Query the running driver for the active profile name via scuf-ctl status."""
+    """Query the running driver for the active profile name via IPC socket."""
+    import socket as _socket, json
     try:
-        import subprocess, json
-        raw = subprocess.check_output(["scuf-ctl", "status"], timeout=2)
-        return json.loads(raw).get("profile")
+        sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+        sock.settimeout(2.0)
+        sock.connect("/run/scuf-envision/ipc.sock")
+        sock.sendall(b"status")
+        data = sock.recv(4096).decode().strip()
+        sock.close()
+        return json.loads(data).get("profile")
     except Exception:
         return None
 
