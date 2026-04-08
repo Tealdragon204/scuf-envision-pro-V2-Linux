@@ -30,15 +30,38 @@ def _ipc(cmd: str) -> str | None:
         return None
 
 
-def _make_icon(r: int, g: int, b: int) -> Image.Image:
+def _make_controller_icon(r: int, g: int, b: int) -> Image.Image:
+    """Draw a simple gamepad silhouette in the given colour."""
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    ImageDraw.Draw(img).ellipse((4, 4, 60, 60), fill=(r, g, b, 255))
+    d = ImageDraw.Draw(img)
+    c = (r, g, b, 255)
+    hi = (255, 255, 255, 160)  # highlight colour
+
+    # Main body
+    d.rounded_rectangle([6, 15, 58, 44], radius=11, fill=c)
+    # Left grip
+    d.ellipse([3, 32, 25, 58], fill=c)
+    # Right grip
+    d.ellipse([39, 32, 61, 58], fill=c)
+
+    # D-pad cross (left side)
+    d.rectangle([14, 26, 20, 39], fill=hi)   # vertical bar
+    d.rectangle([10, 30, 24, 35], fill=hi)   # horizontal bar
+
+    # Face buttons — 4 small dots (right side)
+    for cx, cy in [(46, 26), (52, 31), (46, 36), (40, 31)]:
+        d.ellipse([cx - 3, cy - 3, cx + 3, cy + 3], fill=hi)
+
+    # Analog stick hints — two small circles
+    d.ellipse([22, 35, 31, 44], fill=hi)
+    d.ellipse([33, 29, 42, 38], fill=hi)
+
     return img
 
 
-ICON_CONNECTED = _make_icon(0, 200, 80)    # green  — wired
-ICON_WIRELESS  = _make_icon(255, 200, 0)   # yellow — wireless
-ICON_OFFLINE   = _make_icon(200, 60, 60)   # red    — driver offline / searching
+ICON_CONNECTED = _make_controller_icon(0, 180, 70)    # green  — wired
+ICON_WIRELESS  = _make_controller_icon(220, 170, 0)   # amber  — wireless
+ICON_OFFLINE   = _make_controller_icon(180, 50, 50)   # red    — offline / searching
 
 
 class TrayApp:
@@ -58,9 +81,11 @@ class TrayApp:
         with self._lock:
             state = dict(self._state)
 
+        connected = bool(state) and "status" not in state
+
         if not state:
             status_text = "Driver not running"
-        elif state.get("status") == "searching_for_controller":
+        elif not connected:
             status_text = "Searching for controller\u2026"
         else:
             status_text = f"Connected ({state.get('connection', '?')})"
@@ -73,26 +98,30 @@ class TrayApp:
 
         items.append(pystray.Menu.SEPARATOR)
 
-        # Profile submenu
+        # Profile submenu — always present; greyed when not connected
         profiles = state.get("profiles", [])
         active   = state.get("profile", "default")
-        if profiles:
-            def _profile_item(name):
-                return pystray.MenuItem(
-                    name,
-                    lambda _icon, _item, n=name: self._switch_profile(n),
-                    checked=lambda _item, n=name: self._state.get("profile") == n,
-                    radio=True,
-                )
-            items.append(pystray.MenuItem(
-                f"Profile: {active}",
-                pystray.Menu(*[_profile_item(p) for p in profiles]),
-            ))
+
+        def _profile_item(name):
+            return pystray.MenuItem(
+                name,
+                lambda _icon, _item, n=name: self._switch_profile(n),
+                checked=lambda _item, n=name: self._state.get("profile") == n,
+                radio=True,
+            )
+
+        profile_submenu = (
+            pystray.Menu(*[_profile_item(p) for p in profiles])
+            if profiles
+            else pystray.Menu(pystray.MenuItem("Not connected", None, enabled=False))
+        )
+        profile_label = f"Profile: {active}" if connected else "Profile"
+        items.append(pystray.MenuItem(profile_label, profile_submenu, enabled=connected))
 
         items.append(pystray.Menu.SEPARATOR)
 
-        # RGB submenu
-        rgb_ok = state.get("rgb", False)
+        # RGB submenu — always present; greyed when not connected or no RGB controller
+        rgb_ok = connected and bool(state.get("rgb", False))
         rgb_menu = pystray.Menu(
             pystray.MenuItem("Off",             lambda _: self._set_rgb("rgb off")),
             pystray.Menu.SEPARATOR,
@@ -137,12 +166,13 @@ class TrayApp:
     def _refresh_icon(self) -> None:
         with self._lock:
             state = dict(self._state)
-        if not state:
+        connected = bool(state) and "status" not in state
+        if not connected:
             self._icon.icon  = ICON_OFFLINE
-            self._icon.title = "SCUF Envision \u2014 driver offline"
-        elif state.get("status") == "searching_for_controller":
-            self._icon.icon  = ICON_OFFLINE
-            self._icon.title = "SCUF Envision \u2014 searching\u2026"
+            self._icon.title = (
+                "SCUF Envision \u2014 driver offline" if not state
+                else "SCUF Envision \u2014 searching\u2026"
+            )
         elif state.get("connection") == "wireless":
             self._icon.icon  = ICON_WIRELESS
             self._icon.title = f"SCUF Envision \u2014 wireless | {state.get('profile', '?')}"
