@@ -127,6 +127,35 @@ right_stick_anti_deadzone = 0
 # For Hall Effect sticks: 16–32. For worn potentiometers: 64–128.
 jitter_threshold = 32
 
+# ── Response curves ───────────────────────────────────────────────────────────
+# Shape the analog output for sticks and triggers using piecewise-linear
+# interpolation through 6 control points (OLH-compatible format).
+#
+# Options: linear, aggressive, steady, relaxed, custom
+#
+#   linear     — 1:1 mapping (default, current behaviour)
+#   aggressive — fast initial response; reaches max deflection sooner
+#                (good for fast-paced games where you want quick full deflection)
+#   steady     — more precision near centre; gradual buildup to max
+#                (good for aiming, slower-paced games)
+#   relaxed    — maximum centre precision; very slow buildup
+#                (best for precision aiming at the cost of quick max deflection)
+#   custom     — define your own 6-point curve below
+#
+# Per-profile: add stick_response_curve / trigger_response_curve under
+# a [profile.NAME.input] section to override per game.
+stick_response_curve = linear
+trigger_response_curve = linear
+
+# Custom curve control points (only used when curve = custom).
+# Twelve comma-separated integers: x0,y0,x1,y1,...,x5,y5
+# x = input percentage (0–100), y = output percentage (0–100).
+# Points must be in ascending x order; first must be (0,0), last (100,100).
+# Example (linear): 0,0,20,20,40,40,60,60,80,80,100,100
+# Example (aggressive ≈ sqrt): 0,0,20,42,40,65,60,80,80,92,100,100
+# stick_curve_points = 0,0,20,20,40,40,60,60,80,80,100,100
+# trigger_curve_points = 0,0,20,20,40,40,60,60,80,80,100,100
+
 [driver]
 # Event loop poll timeout in milliseconds.
 # Default 2 matches the controller's 500 Hz report rate (wired + Slipstream wireless).

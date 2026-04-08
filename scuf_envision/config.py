@@ -70,6 +70,8 @@ DEFAULTS = {
         "left_trigger_deadzone_sw":  "5",
         "right_trigger_deadzone_sw": "5",
         "jitter_threshold":          "32",
+        "stick_response_curve":      "linear",
+        "trigger_response_curve":    "linear",
     },
 }
 
@@ -261,6 +263,19 @@ def rgb_state_params(state: str, profile_name: str | None = None) -> dict:
                 speed=speed, brightness=brightness)
 
 
+def _parse_curve(name: str, points_str: str | None) -> list:
+    """Resolve a curve name (or 'custom') to a list of 6 (x%, y%) tuples."""
+    from .input_filter import CURVE_PRESETS
+    if name == 'custom' and points_str:
+        try:
+            vals = [int(v.strip()) for v in points_str.split(',')]
+            if len(vals) == 12:
+                return list(zip(vals[::2], vals[1::2]))
+        except ValueError:
+            pass
+    return CURVE_PRESETS.get(name, CURVE_PRESETS['linear'])
+
+
 def input_params(profile_name: str | None = None) -> dict:
     """Return input filter configuration, with optional per-profile override.
 
@@ -277,6 +292,11 @@ def input_params(profile_name: str | None = None) -> dict:
         except ValueError:
             return default
 
+    stick_curve_name    = config.get(section, "stick_response_curve",   fallback="linear").strip()
+    trigger_curve_name  = config.get(section, "trigger_response_curve", fallback="linear").strip()
+    stick_pts_raw       = config.get(section, "stick_curve_points",     fallback=None)
+    trigger_pts_raw     = config.get(section, "trigger_curve_points",   fallback=None)
+
     return {
         "left_stick_deadzone_hw":    gi("left_stick_deadzone_hw",    2,   0, 15),
         "right_stick_deadzone_hw":   gi("right_stick_deadzone_hw",   2,   0, 15),
@@ -289,6 +309,8 @@ def input_params(profile_name: str | None = None) -> dict:
         "left_trigger_deadzone_sw":  gi("left_trigger_deadzone_sw",  5,   0, 1023),
         "right_trigger_deadzone_sw": gi("right_trigger_deadzone_sw", 5,   0, 1023),
         "jitter_threshold":          gi("jitter_threshold",          32,  0, 1000),
+        "stick_curve":               _parse_curve(stick_curve_name,   stick_pts_raw),
+        "trigger_curve":             _parse_curve(trigger_curve_name, trigger_pts_raw),
     }
 
 

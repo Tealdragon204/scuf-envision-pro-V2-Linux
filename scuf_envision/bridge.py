@@ -354,6 +354,8 @@ class BridgeService:
             left_trigger_deadzone=p['left_trigger_deadzone_sw'],
             right_trigger_deadzone=p['right_trigger_deadzone_sw'],
             jitter_threshold=p['jitter_threshold'],
+            stick_curve=p['stick_curve'],
+            trigger_curve=p['trigger_curve'],
         )
         log.debug("Input filter reloaded: L_sw=%d R_sw=%d L_anti=%d R_anti=%d jitter=%d",
                   p['left_stick_deadzone_sw'], p['right_stick_deadzone_sw'],
