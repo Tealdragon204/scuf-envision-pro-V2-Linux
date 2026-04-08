@@ -1,14 +1,20 @@
 # SCUF Envision Pro V2 - Linux Driver
 
-A userspace driver that makes the SCUF Envision Pro V2 controller work correctly on Linux with proper Xbox button mapping and rumble/force-feedback support.
+A userspace driver that makes the SCUF Envision Pro V2 controller work correctly on Linux with proper Xbox button mapping, RGB control, rumble, profiles, and more.
 
 **Tested on:** Garuda Linux (Arch-based) with KDE Plasma
 
-## The Problem
+## Features
 
-The SCUF Envision Pro V2 (Corsair VID `1b1c`, PID `3a05`) sends **wildly non-standard evdev button and axis codes** on Linux. Without this driver, buttons are mismatched (X/Y swapped, bumpers in wrong slots, triggers on wrong axes) and games are unplayable.
-
-Additionally, the controller's USB audio has two problems: the hardware mixer defaults to 50% output power (`numid=8` at 16,16 instead of 32,32), and the "Headset" mixer reports a broken dB range that makes PipeWire/WirePlumber volume control non-functional. Both are fixed by the included audio setup.
+- **Button/axis remapping** — corrects the controller's non-standard evdev output to Xbox-compatible codes
+- **Named profiles** — per-game button remapping, switched live with no restart
+- **RGB control** — 12 animation modes (static, rainbow, breathe, colorpulse, etc.); activity-based state changes; per-profile overrides
+- **Rumble / force feedback** — full FF_RUMBLE + FF_GAIN passthrough to the controller's motors
+- **Deadzone & anti-deadzone** — radial SW deadzone, jitter suppression, per-profile anti-deadzone to defeat in-game deadzones in older titles
+- **Battery monitoring** — polls via HID raw interface, sends desktop notifications at configurable thresholds
+- **Wireless support** — auto-reconnect loop keeps the virtual gamepad alive for up to 5 min while the controller reconnects
+- **USB audio fix** — fixes broken hardware mixer and PipeWire/WirePlumber volume control
+- **IPC / CLI** — `scuf-ctl` sends live commands to the running driver; `scuf-profile` wraps game launches
 
 ## How It Works
 
@@ -21,9 +27,9 @@ Physical SCUF Controller (VID 1b1c, PID 3a05 wired / 3a08 wireless)
         |           |
         |     Exclusive grab (prevents double-input)
         |           |
-        |     Button/Axis remapping (SCUF -> Xbox standard)
+        |     Profile-based button/axis remapping
         |           |
-        |     Deadzone & jitter filtering
+        |     Deadzone, anti-deadzone & jitter filtering
         |           |
         |     Virtual Xbox Gamepad (via uinput)
         |           |
@@ -32,6 +38,8 @@ Physical SCUF Controller (VID 1b1c, PID 3a05 wired / 3a08 wireless)
         +--- HID raw interface (/dev/hidrawN)
                     |
                     +-- Battery polling (every 60s) -> desktop notifications
+                    |
+                    +-- RGB animation engine (software, 60 fps)
                     |
                     +-- Rumble: game FF_RUMBLE events -> HID motor packet
                     |
@@ -88,8 +96,6 @@ A reboot ensures the audio fix, udev rules, and systemd service all take effect 
 
 ### Verify the Controller Works
 
-The driver runs automatically as a systemd service. Verify it's working before configuring anything else:
-
 ```bash
 # Check the service is running
 sudo systemctl status scuf-envision.service
@@ -102,7 +108,7 @@ sudo evtest
 # Select the "SCUF Envision Pro V2 (Xbox Mode)" device
 ```
 
-Press buttons and move sticks — you should see correct Xbox-mapped events. If the controller isn't detected, see [Troubleshooting](#troubleshooting) below.
+Press buttons and move sticks — you should see correct Xbox-mapped events.
 
 ### Steam Configuration
 
@@ -110,10 +116,7 @@ Steam's built-in controller support may try to read the raw SCUF device (with br
 
 **Option A: Environment Variable (Recommended)**
 
-Tell SDL to ignore the physical SCUF device entirely:
-
 ```bash
-# Create environment config (works with KDE Plasma, GNOME, etc.)
 mkdir -p ~/.config/environment.d
 echo 'SDL_GAMECONTROLLER_IGNORE_DEVICES=0x1b1c/0x3a05' > ~/.config/environment.d/scuf.conf
 ```
@@ -124,83 +127,207 @@ Log out and back in for this to take effect.
 
 1. Open Steam -> Settings -> Controller -> General Controller Settings
 2. Find the SCUF Envision Pro entry (if listed) and disable it
-3. The virtual "SCUF Envision Pro V2 (Xbox Mode)" controller should be listed as an Xbox controller
 
-### Disable SCUF Audio Entirely (Optional)
+---
 
-If you don't use the controller's headphone jack at all and want to remove it from your audio device list completely:
+## Configuration
 
-```bash
-sudo /opt/scuf-envision/tools/scuf-audio-toggle disable
-```
+All settings live in `/etc/scuf-envision/config.ini`. After editing, run:
 
-This unbinds the SCUF USB audio interface from the kernel driver so PipeWire/PulseAudio won't see it. The setting persists across reboots (stored in `/etc/scuf-envision/config.ini`).
-
-To re-enable:
-
-```bash
-sudo /opt/scuf-envision/tools/scuf-audio-toggle enable
-```
-Then disconnect and reconnect the controller, audio should then re-enable
-
-To check current state:
-
-```bash
-sudo /opt/scuf-envision/tools/scuf-audio-toggle status
-```
-
-### Battery Monitoring
-
-The driver reads battery level from the controller via the HID raw interface and logs it to the service journal:
-
-```bash
-journalctl -u scuf-envision.service -e | grep -i battery
-# Example: 22:44:00 [INFO] scuf_envision.hid: Battery update: 47%
-```
-
-**Low-battery desktop notifications** are sent automatically when the battery drops below configured thresholds. By default these are 20%, 10%, 5%, and 1%. The 1% notification reads "controller will shut off soon!".
-
-Notifications are delivered to the active graphical session (KDE, GNOME, etc.) via `notify-send`. No extra setup is required.
-
-**Configure thresholds** in `/etc/scuf-envision/config.ini`:
-
-```ini
-[battery]
-# Set notifications = false to disable all low-battery alerts
-notifications = true
-
-# Comma-separated list of percentages. A notification fires the first time
-# the battery drops into each zone. Resets if battery recovers above a threshold.
-notify_thresholds = 20,10,5,1
-```
-
-Restart the service after editing:
 ```bash
 sudo systemctl restart scuf-envision
 ```
 
-> **Note:** Battery polling requires `notify-send` to be installed (`libnotify-bin` on Debian/Ubuntu, `libnotify` on Arch). It is installed automatically by `install.sh`.
+Some settings (profiles, RGB) can be changed live without a restart using `scuf-ctl`.
+
+---
+
+### Named Profiles
+
+Profiles let you assign different button remaps and input settings per game, switched live.
+
+**Define a profile** in `/etc/scuf-envision/config.ini`:
+
+```ini
+# Map paddles to face buttons
+[profile.BIOSHOCK]
+BTN_TRIGGER_HAPPY1 = BTN_SOUTH
+BTN_TRIGGER_HAPPY2 = BTN_EAST
+BTN_TRIGGER_HAPPY3 = BTN_NORTH
+
+# Swap A and B (Nintendo muscle memory)
+[profile.NINTENDO_LAYOUT]
+BTN_SOUTH = BTN_EAST
+BTN_EAST  = BTN_SOUTH
+```
+
+Keys are the raw SCUF hardware codes; values are what games receive. See [Button Mapping Reference](#button-mapping-reference) for the full code list.
+
+**Switch profiles live:**
+
+```bash
+scuf-ctl profile BIOSHOCK
+scuf-ctl profile default      # restore global defaults
+scuf-ctl status               # shows active profile and available profiles
+```
+
+**Auto-switch on game launch (Steam / Heroic):**
+
+Set the game's launch option to:
+```
+scuf-profile BIOSHOCK %command%
+```
+
+`scuf-profile` activates the profile before the game starts and restores `default` when the game exits — including force-quit.
+
+---
+
+### RGB Control
+
+#### Config file
+
+```ini
+[rgb]
+mode = static          # static, off, rainbow, pastelrainbow, watercolor, rotator,
+                       # colorpulse, colorshift, breathe, storm, flickering, cpu-temperature
+color = 255,255,255    # primary color (R,G,B 0-255)
+color2 = 0,0,255       # secondary color for two-color modes
+speed = 1.0            # 0.1–20.0; higher = faster
+brightness = 100       # 0–100%
+```
+
+#### Live RGB control (no restart)
+
+```bash
+scuf-ctl rgb off
+scuf-ctl rgb static ff0000          # solid red
+scuf-ctl rgb rainbow                # rainbow sweep
+scuf-ctl rgb rainbow 3.0            # faster rainbow
+scuf-ctl rgb breathe 00ff88         # breathing green
+scuf-ctl rgb colorpulse ff0000 0000ff 2.0   # pulse between red and blue
+scuf-ctl rgb cpu-temperature        # blue (cool) → red (hot)
+```
+
+#### Activity-based RGB
+
+Automatically changes mode based on controller use:
+
+```ini
+[rgb]
+activity_tracking = true
+idle_after = 30       # seconds before idle state
+sleep_after = 300     # seconds before sleep state
+
+[rgb.active]
+mode = static
+color = 255,255,255
+brightness = 100
+
+[rgb.idle]
+mode = static
+color = 255,255,255
+brightness = 20
+
+[rgb.sleep]
+mode = off
+```
+
+#### Per-profile RGB overrides
+
+Each profile can override any RGB state:
+
+```ini
+[profile.BIOSHOCK.rgb.active]
+mode = breathe
+color = 255,80,0
+speed = 0.8
+
+[profile.BIOSHOCK.rgb.sleep]
+mode = off
+```
+
+---
+
+### Deadzone & Anti-Deadzone
+
+The driver applies three layers of deadzone:
+
+1. **Hardware deadzone** — sent to the controller firmware (currently no-op pending USB capture verification; config keys present for future use)
+2. **Software radial deadzone** — circular deadzone computed from `sqrt(x²+y²)`; rescales output so the deadzone edge maps to 0 cleanly
+3. **Anti-deadzone** — lifts the output floor to overcome in-game deadzones in older titles
+
+```ini
+[input]
+# Software radial deadzone (0–32767). 200 is right for Hall Effect sticks.
+left_stick_deadzone_sw = 200
+right_stick_deadzone_sw = 200
+
+# Anti-deadzone (0–32767). Use only for games with large internal deadzones.
+# Applied to radial magnitude — direction is fully preserved.
+# Typical values: 6000–10000 (20–30% of axis range).
+left_stick_anti_deadzone = 0
+right_stick_anti_deadzone = 0
+
+# Trigger software deadzone (0–1023).
+left_trigger_deadzone_sw = 5
+right_trigger_deadzone_sw = 5
+
+# Jitter suppression — ignore changes smaller than this (0–1000).
+jitter_threshold = 32
+```
+
+**Anti-deadzone per-profile** (common pattern for older console ports):
+
+```ini
+[profile.BIOSHOCK.input]
+left_stick_anti_deadzone = 9830
+right_stick_anti_deadzone = 9830
+```
+
+**What anti-deadzone does:** maps the output range `[deadzone_edge, max]` → `[anti_dz, max]` linearly. The direction vector is fully preserved — only the radial magnitude gets the floor lift. At max deflection you still reach 32767. Useful values:
+
+| Percentage | Value |
+|---|---|
+| 20% | 6553 |
+| 30% | 9830 |
+| 40% | 13107 |
+| 50% | 16384 |
+
+**Diagnose deadzone settings live:**
+
+```bash
+sudo python3 /opt/scuf-envision/tools/diag.py --deadzone
+sudo python3 /opt/scuf-envision/tools/diag.py --deadzone --profile BIOSHOCK
+```
+
+Shows the active config, current deadzone values, and annotated live axis events.
+
+---
+
+### Battery Monitoring
+
+```ini
+[battery]
+notifications = true
+notify_thresholds = 20,10,5,1
+```
+
+Low-battery desktop notifications are sent automatically at each threshold. At 1% the message reads "Controller will shut off soon!".
+
+```bash
+journalctl -u scuf-envision.service -e | grep -i battery
+# Example: [INFO] scuf_envision.hid: Battery update: 47%
+```
 
 ---
 
 ### Rumble / Force Feedback
 
-Rumble is **enabled by default**. Games that send force-feedback events (most Steam games, `fftest`, etc.) will vibrate the controller's left (strong) and right (weak) motors automatically.
+Rumble is enabled by default. Supports FF_RUMBLE (separate strong/weak motors) and FF_GAIN (global intensity multiplier).
 
-**Features:**
-- **FF_RUMBLE** — standard Linux force-feedback rumble with separate strong/weak motors
-- **FF_GAIN** — games can set a global rumble intensity multiplier (common in Wine/Proton titles); the driver scales all rumble output accordingly
-- **Hardware motor initialization** — on startup, the driver sets both vibration motors to 100% hardware intensity (equivalent to iCUE's vibration slider on Windows), ensuring you get full-strength rumble regardless of previous iCUE settings
+**Test rumble manually (Bash):**
 
-**Test rumble manually:**
-
-Bash:
 ```bash
-# Install the test tool (if not already installed)
-# Arch/Garuda: sudo pacman -S linuxconsole
-# Ubuntu/Debian: sudo apt install joystick
-
-# Auto-detect and run fftest on the virtual gamepad
 for f in /sys/class/input/event*/device/name; do
   if cat "$f" 2>/dev/null | grep -q 'SCUF Envision Pro V2 (Xbox Mode)'; then
     EVENT=$(echo "$f" | grep -o 'event[0-9]*')
@@ -210,98 +337,140 @@ for f in /sys/class/input/event*/device/name; do
 done
 ```
 
-Fish:
-```fish
-# Auto-detect and run fftest on the virtual gamepad
-for f in /sys/class/input/event*/device/name
-    if string match -q '*SCUF Envision Pro V2 (Xbox Mode)*' (cat $f 2>/dev/null)
-        set EVENT (string match -r 'event[0-9]+' $f)
-        sudo fftest /dev/input/$EVENT
-        break
-    end
-end
-```
+**Disable rumble:**
 
-**Verify rumble in service logs:**
-
-```bash
-journalctl -u scuf-envision.service -e | grep -i rumble
-# Should show: "Rumble enabled (hidraw: /dev/hidrawN)"
-```
-
-**Disable rumble** (if you don't want vibration):
-
-Edit `/etc/scuf-envision/config.ini`:
 ```ini
 [rumble]
 disabled = true
 ```
-Then restart the service:
-```bash
-sudo systemctl restart scuf-envision
-```
-When disabled, the virtual gamepad won't advertise force-feedback capability, so games will never send rumble events.
 
 ---
 
-## Usage
+### Audio
 
-### Service Logs
+The controller's USB audio has two problems fixed by the installer:
+1. Hardware mixer defaults to 50% power — fixed via `amixer cset numid=8 32,32`
+2. PipeWire/WirePlumber volume control broken — fixed via WirePlumber software volume config
+
+**Disable SCUF audio entirely** (if you don't use the headphone jack):
 
 ```bash
-# View live logs
-journalctl -u scuf-envision.service -f
-
-# View recent logs
-journalctl -u scuf-envision.service -e
+sudo scuf-audio-toggle disable
+sudo scuf-audio-toggle enable
+sudo scuf-audio-toggle status
 ```
 
-### Diagnostic Tool
+---
 
-To see raw events from the controller (useful for troubleshooting):
+## CLI Tools
+
+### scuf-ctl
+
+IPC client for the running driver. All commands take effect immediately with no restart.
 
 ```bash
+scuf-ctl ping                          # check driver is alive
+scuf-ctl status                        # show profile, device, rumble/RGB state
+scuf-ctl profile NAME                  # switch to named profile
+scuf-ctl profile default               # restore default
+
+scuf-ctl rgb off
+scuf-ctl rgb static [RRGGBB]
+scuf-ctl rgb rainbow [speed]
+scuf-ctl rgb pastelrainbow [speed]
+scuf-ctl rgb watercolor [speed]
+scuf-ctl rgb rotator [speed]
+scuf-ctl rgb breathe [RRGGBB] [speed]
+scuf-ctl rgb colorpulse [RR GG] [speed]
+scuf-ctl rgb colorshift [RR GG] [speed]
+scuf-ctl rgb storm [RR GG]
+scuf-ctl rgb flickering [RR GG] [speed]
+scuf-ctl rgb cpu-temperature [speed]
+scuf-ctl rgb RRGGBB                    # shorthand for static
+```
+
+`RR`/`GG` = two hex colors (e.g. `ff0000 0000ff`); `speed` = 0.1–20.0 (default 1.0).
+
+### scuf-profile
+
+Launch wrapper for Steam/Heroic. Activates a profile before the game and restores `default` on exit (including force-quit).
+
+```bash
+# Steam / Heroic launch option:
+scuf-profile BIOSHOCK %command%
+
+# Manual use:
+scuf-profile RACING ./game
+```
+
+### scuf-audio-toggle
+
+```bash
+sudo scuf-audio-toggle disable    # unbind SCUF USB audio from kernel
+sudo scuf-audio-toggle enable     # rebind
+sudo scuf-audio-toggle status
+```
+
+---
+
+## Diagnostics
+
+```bash
+# Live event monitor — shows SCUF raw codes → Xbox remapped codes
 sudo python3 /opt/scuf-envision/tools/diag.py
+
+# Deadzone diagnostics — shows active config + annotated axis events
+sudo python3 /opt/scuf-envision/tools/diag.py --deadzone
+sudo python3 /opt/scuf-envision/tools/diag.py --deadzone --profile BIOSHOCK
 ```
 
-This shows every button press and stick movement with labels showing what the SCUF sends vs what it should send. Press each button and move each stick to verify everything is detected. Press **Ctrl+C** to exit.
+---
 
-### Useful Commands
+## Useful Commands
 
 ```bash
-# Check service status
+# Service management
 sudo systemctl status scuf-envision.service
-
-# Stop the service
+sudo systemctl restart scuf-envision.service
 sudo systemctl stop scuf-envision.service
 
-# Restart the service
-sudo systemctl restart scuf-envision.service
-
-# View live logs
+# Logs
 journalctl -u scuf-envision.service -f
+journalctl -u scuf-envision.service -e
 
-# Run diagnostic tool
-sudo python3 /opt/scuf-envision/tools/diag.py
+# Profile management
+scuf-ctl status
+scuf-ctl profile BIOSHOCK
+scuf-ctl profile default
 
-# Disable/enable SCUF headphone audio
-sudo /opt/scuf-envision/tools/scuf-audio-toggle disable
-sudo /opt/scuf-envision/tools/scuf-audio-toggle enable
-sudo /opt/scuf-envision/tools/scuf-audio-toggle status
+# RGB
+scuf-ctl rgb rainbow
+scuf-ctl rgb static 00ff00
+scuf-ctl rgb off
+```
+
+---
+
+## Wireless
+
+The driver detects the wireless receiver (`1b1c:3a08`) the same way as wired. When the controller disconnects (powered off, out of range), the virtual gamepad stays alive for up to 5 minutes while the driver waits for reconnection. Games don't see a device removal.
+
+```bash
+journalctl -u scuf-envision.service -f
+# Look for: "Controller disconnected. Waiting for reconnection..."
+# Then:     "Controller reconnected!"
 ```
 
 ---
 
 ## Updating
 
-The safest way to update is to re-run the installer — it's idempotent and handles everything (driver files, tools, symlinks, service, udev rules):
-
 ```bash
 git pull
 sudo bash install.sh
 ```
 
-Then verify the update took effect:
+Then verify:
 
 ```bash
 sudo systemctl status scuf-envision.service
@@ -314,285 +483,73 @@ scuf-ctl ping   # should print: pong
 
 ### Using the Uninstall Script
 
-The uninstall script is installed alongside the driver. You do **not** need the cloned repository:
-
 ```bash
 sudo bash /opt/scuf-envision/uninstall.sh
 ```
 
-This removes the service, udev rules, audio configs, CLI tool, installed files, config directory, and uinput auto-load. If you had SCUF audio disabled, it re-enables it before removal. Does not remove the `python-evdev` package (other software may use it) or the `uinput` kernel module itself.
+Then reboot.
 
-Then **reboot** (or log out and back in) to ensure all changes take effect.
-
-### Complete Uninstallation & Reversal Guide
-
-If you want to undo **every change** made during installation and return your system to exactly how it was before, follow these steps:
-
-**Step 1: Re-enable SCUF audio (if you disabled it)**
+### Manual / Complete Removal
 
 ```bash
-sudo /opt/scuf-envision/tools/scuf-audio-toggle enable
-```
+# Re-enable audio if disabled
+sudo scuf-audio-toggle enable 2>/dev/null; true
 
-**Step 2: Stop and remove the systemd service**
-
-```bash
+# Stop and remove service
 sudo systemctl stop scuf-envision.service
 sudo systemctl disable scuf-envision.service
 sudo rm -f /etc/systemd/system/scuf-envision.service
 sudo systemctl daemon-reload
-```
 
-**Step 3: Remove driver files and CLI tools**
-
-```bash
-sudo rm -f /usr/local/bin/scuf-audio-toggle /usr/local/bin/scuf-ctl /usr/local/bin/scuf-profile
-sudo rm -rf /opt/scuf-envision
-```
-
-**Step 4: Remove udev rules and audio configs**
-
-```bash
-sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
-sudo rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-**Step 5: Remove config directory**
-
-```bash
-sudo rm -rf /etc/scuf-envision
-```
-
-**Step 6: Remove the uinput auto-load config**
-
-```bash
-sudo rm -f /etc/modules-load.d/uinput.conf
-```
-
-> **Note:** Other software may also use `uinput` (e.g., other controller drivers, remote desktop tools). If you're unsure, you can leave this file in place - it's harmless.
-
-**Step 7: Remove the SDL environment variable (Steam fix)**
-
-```bash
-rm -f ~/.config/environment.d/scuf.conf
-```
-
-Log out and back in for this change to take effect.
-
-**Step 8: Remove the cloned repository (if still present)**
-
-After installation, the driver runs from `/opt/scuf-envision`. The git clone is no longer needed:
-
-```bash
-rm -rf ~/scuf-envision-pro-V2-Linux
-```
-
-> **Note:** If you cloned to a different location, remove it from there instead.
-
-**Step 9: Remove the python-evdev package (optional)**
-
-This is optional because `python-evdev` is a common package that other software may depend on.
-
-**Arch / Garuda / Manjaro:**
-```bash
-sudo pacman -Rs python-evdev
-```
-
-**Ubuntu / Debian / Pop!_OS:**
-```bash
-sudo apt remove python3-evdev
-```
-
-**Fedora:**
-```bash
-sudo dnf remove python3-evdev
-```
-
-### Quick Uninstall (All-in-One)
-
-If you want to remove everything in one go, you can run these commands back-to-back:
-
-```bash
-# Re-enable audio if it was disabled
-sudo /opt/scuf-envision/tools/scuf-audio-toggle enable 2>/dev/null; true
-
-# Stop and remove service
-sudo systemctl stop scuf-envision.service 2>/dev/null; true
-sudo systemctl disable scuf-envision.service 2>/dev/null; true
-sudo rm -f /etc/systemd/system/scuf-envision.service
-sudo systemctl daemon-reload
-
-# Remove CLI tools and installed driver files
+# Remove CLI tools and driver files
 sudo rm -f /usr/local/bin/scuf-audio-toggle /usr/local/bin/scuf-ctl /usr/local/bin/scuf-profile
 sudo rm -rf /opt/scuf-envision
 
-# Remove all udev rules and audio configs
+# Remove udev rules and audio configs
 sudo rm -f /etc/udev/rules.d/99-scuf-envision.rules
 sudo rm -f /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
-# Remove config
+# Remove config and uinput auto-load
 sudo rm -rf /etc/scuf-envision
-
-# Remove uinput auto-load
 sudo rm -f /etc/modules-load.d/uinput.conf
 
 # Remove SDL ignore variable
 rm -f ~/.config/environment.d/scuf.conf
 
-# Remove cloned repository (if still present)
-rm -rf ~/scuf-envision-pro-V2-Linux
-
 echo "All SCUF driver components removed."
 ```
 
-After this, **reboot** to ensure all changes take effect. Your controller will go back to its default (unmapped) Linux behavior.
-
-### What the Uninstall Does NOT Change
-
-For safety, the uninstall process does **not** touch these:
-- **python-evdev package** — other software may use it; remove manually if you want (see Step 9)
-- **uinput kernel module** — it's a standard Linux module; removing the auto-load config just prevents it from loading on boot, it doesn't uninstall it
-- **Your Steam library or game configs** — no game settings are modified by this driver
-
----
-
-## Troubleshooting
-
-### Controller not detected
-
-```
-ERROR: No SCUF Envision Pro V2 controller found!
-```
-
-1. **Check USB connection:** `lsusb | grep 1b1c` - you should see `1b1c:3a05` (wired) or `1b1c:3a08` (wireless receiver)
-2. **Try a different USB port** - preferably a port directly on the motherboard, not a hub
-3. **Try a different USB cable** - a bad cable can cause intermittent detection
-4. **Check dmesg:** `dmesg | tail -20` - look for USB errors
-
-### Controller disconnects after a few seconds
-
-This can be caused by the USB audio interface. Make sure the audio setup is applied (this is done automatically by `install.sh`, but if you need to re-apply):
-
-```bash
-sudo bash /opt/scuf-envision/tools/setup_scuf_audio.sh
-# Reboot or restart WirePlumber, then replug the controller
-```
-
-### Double input / buttons firing twice
-
-The driver exclusively grabs the physical device to prevent this. If it still happens:
-
-1. Make sure only one instance of the driver is running
-2. Set the SDL ignore variable (see Post-Install Setup above)
-3. Check: `cat /proc/bus/input/devices | grep -c "SCUF"` - should show 2 entries (physical + virtual), not more
-
-### Permission denied errors
-
-```bash
-# Make sure udev rules are installed (done automatically by install.sh)
-sudo cp /opt/scuf-envision/../99-scuf-envision.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-
-# Or just run with sudo
-sudo python3 -m scuf_envision
-```
-
-### "uinput" module not found
-
-```bash
-sudo modprobe uinput
-echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf
-```
-
-### Wireless: controller not detected
-
-1. **Check receiver:** `lsusb | grep 1b1c` - you should see `1b1c:3a08` for the wireless receiver
-2. **Power on the controller** - the receiver only exposes gamepad inputs when the controller is paired and powered on
-3. **Re-pair if needed** - hold the pairing button on the receiver, then hold the pairing button on the controller
-4. **Run diagnostics:** `sudo python3 /opt/scuf-envision/tools/diag.py` - it will show both wired and wireless devices
-
-### Wireless: controller reconnection
-
-When using the wireless receiver, the driver automatically waits up to 5 minutes for the controller to reconnect if it disconnects (powered off, out of range, or sleeping). The virtual gamepad stays alive during this time so games don't see a device removal. To verify reconnection is working, check the driver logs:
-
-```bash
-sudo journalctl -u scuf-envision.service -f
-# Look for: "Controller disconnected. Waiting for reconnection..."
-# Then:     "Controller reconnected!"
-```
+Reboot after removal.
 
 ---
 
 ## Manual (Portable) Installation
 
-> **Most users should use `install.sh` instead** (see Installation above). This section is for advanced users who want to run the driver directly from the cloned repository without installing system-wide.
+> For advanced users who want to run from the cloned repo without a system-wide install.
 
-### Install Dependencies
-
-**Arch / Garuda / Manjaro:**
 ```bash
+# Arch/Garuda
 sudo pacman -S python-evdev
-```
 
-**Ubuntu / Debian / Pop!_OS:**
-```bash
+# Ubuntu/Debian
 sudo apt install python3-evdev
-```
 
-**Fedora:**
-```bash
+# Fedora
 sudo dnf install python3-evdev
-```
 
-### Load the uinput Kernel Module
-
-```bash
-# Load it now
+# Load uinput
 sudo modprobe uinput
-
-# Make it load automatically on boot
 echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf
-```
 
-### Install udev Rules
-
-```bash
+# Install udev rules
 sudo cp 99-scuf-envision.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
+sudo udevadm control --reload-rules && sudo udevadm trigger
 
-### Enable Headphone Audio (Optional)
-
-```bash
-sudo bash tools/setup_scuf_audio.sh
-```
-
-Then **reboot** (or run `systemctl --user restart pipewire wireplumber` as your normal user).
-
-To undo:
-
-```bash
-sudo rm /etc/wireplumber/wireplumber.conf.d/50-scuf-audio.conf
-sudo udevadm control --reload-rules
-# Then reboot or restart PipeWire/WirePlumber
-```
-
-### Run the Driver Manually
-
-```bash
-cd scuf-envision-pro-V2-Linux
+# Run
 sudo python3 -m scuf_envision
 ```
-
-The driver runs until you press **Ctrl+C** or unplug the controller.
-
-> **Note:** When running manually from the repo, the `scuf-audio-toggle` tool is at `tools/scuf-audio-toggle` (relative to the repo root). The config file is still at `/etc/scuf-envision/config.ini`.
 
 ---
 
@@ -604,22 +561,40 @@ The driver runs until you press **Ctrl+C** or unplug the controller.
 |---|---|---|
 | A | BTN_SOUTH (0x130) | BTN_SOUTH (0x130) |
 | B | BTN_EAST (0x131) | BTN_EAST (0x131) |
-| X | BTN_C (0x132) | BTN_NORTH (0x133) — kernel alias BTN_X |
-| Y | BTN_NORTH (0x133) | BTN_WEST (0x134) — kernel alias BTN_Y |
-| LB (Left Bumper) | BTN_WEST (0x134) | BTN_TL (0x136) |
-| RB (Right Bumper) | BTN_Z (0x135) | BTN_TR (0x137) |
+| X | BTN_C (0x132) | BTN_NORTH (0x133) |
+| Y | BTN_NORTH (0x133) | BTN_WEST (0x134) |
+| LB | BTN_WEST (0x134) | BTN_TL (0x136) |
+| RB | BTN_Z (0x135) | BTN_TR (0x137) |
 | Select / Back | BTN_TL (0x136) | BTN_SELECT (0x13a) |
 | Start / Menu | BTN_TR (0x137) | BTN_START (0x13b) |
-| L3 (Left Stick Click) | BTN_TL2 (0x138) | BTN_THUMBL (0x13d) |
-| R3 (Right Stick Click) | BTN_TR2 (0x139) | BTN_THUMBR (0x13e) |
-| Xbox / Guide | BTN_MODE (0x13c) | BTN_MODE (0x13c) |
+| L3 | BTN_TL2 (0x138) | BTN_THUMBL (0x13d) |
+| R3 | BTN_TR2 (0x139) | BTN_THUMBR (0x13e) |
+| Guide | BTN_MODE (0x13c) | BTN_MODE (0x13c) |
 | Paddle 1 | BTN_TRIGGER_HAPPY1 | BTN_TRIGGER_HAPPY1 |
 | Paddle 2 | BTN_TRIGGER_HAPPY2 | BTN_TRIGGER_HAPPY2 |
 | Paddle 3 | BTN_TRIGGER_HAPPY3 | BTN_TRIGGER_HAPPY3 |
 
+**Physical codes for profile remapping** (what to use as keys in `[profile.NAME]`):
+
+```
+BTN_SOUTH, BTN_EAST, BTN_C (X), BTN_NORTH (Y),
+BTN_WEST (LB), BTN_Z (RB), BTN_TL (Back), BTN_TR (Start),
+BTN_TL2 (L3), BTN_TR2 (R3), BTN_MODE (Guide),
+BTN_TRIGGER_HAPPY1/2/3 (Paddles)
+```
+
+**Virtual output codes** (what to use as values):
+
+```
+BTN_SOUTH (A), BTN_EAST (B), BTN_NORTH (X), BTN_WEST (Y),
+BTN_TL (LB), BTN_TR (RB), BTN_SELECT (Back), BTN_START (Start),
+BTN_THUMBL (L3), BTN_THUMBR (R3), BTN_MODE (Guide),
+BTN_TRIGGER_HAPPY1/2/3 (Paddles)
+```
+
 ### Axes
 
-| Physical Input | SCUF Sends (Wrong) | Driver Outputs (Correct) | Range |
+| Physical Input | SCUF Sends | Driver Outputs | Range |
 |---|---|---|---|
 | Left Stick X | ABS_X | ABS_X | -32768 to 32767 |
 | Left Stick Y | ABS_Y | ABS_Y | -32768 to 32767 |
@@ -645,44 +620,42 @@ The driver runs until you press **Ctrl+C** or unplug the controller.
 
 ```
 scuf-envision-pro-V2-Linux/
-  scuf_envision/              # Main driver package
-    __init__.py
-    __main__.py               # Entry point: python -m scuf_envision
-    constants.py              # VID:PID, button/axis mapping tables
-    discovery.py              # Auto-detect controller via sysfs
-    bridge.py                 # Core event loop (read -> remap -> emit)
-    input_filter.py           # Radial deadzone, jitter suppression
-    virtual_gamepad.py        # Virtual Xbox controller via uinput
-    rumble.py                 # Force-feedback: translates FF events to HID rumble packets
-    config.py                 # Config file loading/saving (/etc/scuf-envision/config.ini)
-    audio_control.py          # USB audio unbind/rebind via sysfs
-    hid.py                    # HID raw interface: battery level polling, keepalive
+  scuf_envision/
+    __main__.py         # Entry point: python -m scuf_envision
+    constants.py        # VID:PID, button/axis mapping tables
+    discovery.py        # Auto-detect controller via sysfs
+    bridge.py           # Core event loop + IPC socket + profile switching
+    input_filter.py     # Radial deadzone, anti-deadzone, jitter suppression
+    virtual_gamepad.py  # Virtual Xbox controller via uinput
+    rumble.py           # FF event → HID motor packet translation
+    config.py           # Config loading; named profiles; input_params() accessor
+    audio_control.py    # USB audio unbind/rebind via sysfs
+    hid.py              # HID raw: battery, RGB animation engine, rumble, keepalive
   tools/
-    diag.py                   # Raw event diagnostic tool
-    setup_scuf_audio.sh       # Headphone audio setup (WirePlumber software volume)
-    scuf-audio-toggle         # CLI tool: disable/enable SCUF audio devices
-  config.ini.default          # Default config (copied to /etc/scuf-envision/ on install)
-  50-scuf-audio.conf          # WirePlumber config for headphone audio
-  99-scuf-envision.rules      # udev rules for device permissions
-  scuf-envision.service       # systemd service file
-  install.sh                  # Automated installer
-  uninstall.sh                # Automated uninstaller
+    diag.py             # Live event diagnostic; --deadzone mode
+    setup_scuf_audio.sh # Headphone audio setup (WirePlumber software volume)
+    scuf-audio-toggle   # CLI: disable/enable SCUF audio
+    scuf-ctl            # CLI: IPC client (profile switch, RGB, status, ping)
+    scuf-profile        # Launch wrapper: activate profile, restore on exit
+  config.ini.default    # Default config template
+  50-scuf-audio.conf    # WirePlumber config for headphone audio
+  99-scuf-envision.rules
+  scuf-envision.service
+  install.sh
+  uninstall.sh
 ```
+
+---
 
 ## Planned Features
 
-The driver is functional and stable. These features are in the pipeline, roughly in order:
-
 | Phase | Feature |
 |---|---|
-| 12 | **RGB control** — configure controller LED colour via config |
-| 13 | **Vibration passthrough** — expose full haptic control to games |
-| 14 | **Trigger configuration** — per-trigger deadzone and response curve |
-| 15 | **Tray app** — system tray icon for quick profile/audio/rumble switching |
-| 16 | **Layers** — multiple button maps per profile; switch layers by holding a paddle; desktop notification shows the active layer name |
+| 15 | **Tray app** — system tray icon for quick profile/audio/rumble/RGB switching |
+| 16 | **Layers** — multiple button maps per profile; switch layers by holding a paddle; notification shows active layer name |
 | 17 | **Macros** — bind a button to a sequence of inputs with optional delays |
-| 18 | **Desktop layer** — a persistent base layer active across all profiles for window switching, media keys, etc. |
-| 19 | **On-screen keyboard** — invoke the system OSK from a button bind *(blocked: waiting on xdg-desktop-portal gamepad input portal)* |
+| 18 | **Desktop layer** — persistent base layer across all profiles for window switching, media keys, etc. |
+| 19 | **On-screen keyboard** — invoke system OSK from a button bind *(blocked: waiting on xdg-desktop-portal gamepad input portal)* |
 | 20 | **DS4 / DualSense emulation** — optional alternative virtual device target; shows PlayStation button prompts in games |
 
 ---
@@ -694,7 +667,7 @@ Mapping data verified against:
 - [cacique-envision-pro-linux](https://github.com/Gicotto/cacique-envision-pro-linux) (Python) by Gicotto
 
 HID/USB protocol research and hidraw rumble packet implementation informed by:
-- [OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub) by jurkovic-nikola — a comprehensive open-source Linux driver for Corsair USB devices (fans, cooling, lighting, and more). It covers far more hardware than this project needs, but its HID protocol work, device communication patterns, and [SCUF controller audio fix](https://github.com/jurkovic-nikola/OpenLinkHub/blob/main/docs/scuf-controller.md) (`amixer cset numid=8 32,32` + `api.alsa.use-acp = false`) were valuable references.
+- [OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub) by jurkovic-nikola — a comprehensive open-source Linux driver for Corsair USB devices. Its HID protocol work, device communication patterns, and [SCUF controller audio fix](https://github.com/jurkovic-nikola/OpenLinkHub/blob/main/docs/scuf-controller.md) (`amixer cset numid=8 32,32` + `api.alsa.use-acp = false`) were valuable references.
 
 ## License
 
