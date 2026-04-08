@@ -60,9 +60,15 @@ class InputFilter:
         out_x = int(nx * scale * STICK_MAX)
         out_y = int(ny * scale * STICK_MAX)
 
-        # Anti-deadzone: remap non-zero output so minimum output ≥ anti_dz
-        out_x = self._apply_anti_deadzone(out_x, anti_dz)
-        out_y = self._apply_anti_deadzone(out_y, anti_dz)
+        # Anti-deadzone: lift radial magnitude so no direction-dependent amplification.
+        # Applied to magnitude then re-projected, so a 1° off-center push stays 1° off-center.
+        if anti_dz:
+            out_mag = math.sqrt(out_x * out_x + out_y * out_y)
+            if out_mag > 0:
+                new_mag = self._apply_anti_deadzone(int(out_mag), anti_dz)
+                ratio = new_mag / out_mag
+                out_x = int(out_x * ratio)
+                out_y = int(out_y * ratio)
 
         out_x = max(STICK_MIN, min(STICK_MAX, out_x))
         out_y = max(STICK_MIN, min(STICK_MAX, out_y))
