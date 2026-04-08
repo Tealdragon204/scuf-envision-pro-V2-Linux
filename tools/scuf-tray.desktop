@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SCUF Envision Tray
+Comment=System tray for the SCUF Envision Pro V2 driver
+Exec=/usr/local/bin/scuf-tray
+Icon=input-gaming
+Categories=Utility;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
