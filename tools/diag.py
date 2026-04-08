@@ -220,6 +220,16 @@ _TRIGGER_AXIS_LABELS = {
 }
 
 
+def _get_active_profile() -> str | None:
+    """Query the running driver for the active profile name via scuf-ctl status."""
+    try:
+        import subprocess, json
+        raw = subprocess.check_output(["scuf-ctl", "status"], timeout=2)
+        return json.loads(raw).get("profile")
+    except Exception:
+        return None
+
+
 def run_deadzone_mode(profile_name=None):
     """Show current deadzone config and live filtered axis output."""
     from scuf_envision.config import input_params
@@ -230,9 +240,21 @@ def run_deadzone_mode(profile_name=None):
     print("=" * 65)
     print()
 
+    # Auto-detect active profile from running driver if not overridden by --profile
+    explicit = profile_name is not None
+    if not explicit:
+        profile_name = _get_active_profile()
+
     p = input_params(profile_name)
-    section = f"[profile.{profile_name}.input]" if profile_name else "[input]"
-    print(f"Active config section: {section}")
+
+    if profile_name:
+        section = f"[profile.{profile_name}.input]"
+        source = "explicit --profile" if explicit else "detected from running driver"
+    else:
+        section = "[input]"
+        source = "global (driver not running or no profile active)"
+    print(f"Active profile:      {profile_name or 'default'} ({source})")
+    print(f"Config section used: {section}")
     print()
     print("  Hardware deadzone (firmware registers, 0–15):")
     print(f"    Left  stick:   {p['left_stick_deadzone_hw']}")
