@@ -9,25 +9,49 @@ Requires: pystray, pillow
 """
 
 import json
+import logging
 import socket
 import threading
 import time
 from PIL import Image, ImageDraw
 import pystray
 
+log = logging.getLogger(__name__)
+
 SOCKET_PATH = "/run/scuf-envision/ipc.sock"
 POLL_INTERVAL = 3.0
 
+# Sentinel objects returned by _ipc() on error — never returned as real data.
+_OFFLINE  = object()  # socket not found / connection refused
+_TIMEOUT  = object()  # connected but timed out waiting for response
+_BADRESP  = object()  # connected, got data, but not valid JSON
 
-def _ipc(cmd: str) -> str | None:
+
+def _ipc(cmd: str):
+    """Send a command to the driver IPC socket and return the raw string response.
+
+    Returns one of: a str (success), _OFFLINE, _TIMEOUT, or _BADRESP.
+    Never raises.
+    """
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(2.0)
             s.connect(SOCKET_PATH)
             s.sendall((cmd + "\n").encode())
-            return b"".join(iter(lambda: s.recv(4096), b"")).decode().strip()
-    except OSError:
-        return None
+            chunks = []
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            return b"".join(chunks).decode().strip()
+    except (FileNotFoundError, ConnectionRefusedError):
+        return _OFFLINE
+    except TimeoutError:
+        return _TIMEOUT
+    except OSError as e:
+        log.debug("IPC error for %r: %s", cmd, e)
+        return _OFFLINE
 
 
 def _make_controller_icon(r: int, g: int, b: int) -> Image.Image:
@@ -35,38 +59,36 @@ def _make_controller_icon(r: int, g: int, b: int) -> Image.Image:
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     c = (r, g, b, 255)
-    hi = (255, 255, 255, 160)  # highlight colour
+    hi = (255, 255, 255, 160)
 
-    # Main body
     d.rounded_rectangle([6, 15, 58, 44], radius=11, fill=c)
-    # Left grip
     d.ellipse([3, 32, 25, 58], fill=c)
-    # Right grip
     d.ellipse([39, 32, 61, 58], fill=c)
 
-    # D-pad cross (left side)
-    d.rectangle([14, 26, 20, 39], fill=hi)   # vertical bar
-    d.rectangle([10, 30, 24, 35], fill=hi)   # horizontal bar
+    # D-pad
+    d.rectangle([14, 26, 20, 39], fill=hi)
+    d.rectangle([10, 30, 24, 35], fill=hi)
 
-    # Face buttons — 4 small dots (right side)
+    # Face buttons
     for cx, cy in [(46, 26), (52, 31), (46, 36), (40, 31)]:
         d.ellipse([cx - 3, cy - 3, cx + 3, cy + 3], fill=hi)
 
-    # Analog stick hints — two small circles
+    # Analog sticks
     d.ellipse([22, 35, 31, 44], fill=hi)
     d.ellipse([33, 29, 42, 38], fill=hi)
 
     return img
 
 
-ICON_CONNECTED = _make_controller_icon(0, 180, 70)    # green  — wired
-ICON_WIRELESS  = _make_controller_icon(220, 170, 0)   # amber  — wireless
-ICON_OFFLINE   = _make_controller_icon(180, 50, 50)   # red    — offline / searching
+ICON_CONNECTED = _make_controller_icon(0, 180, 70)
+ICON_WIRELESS  = _make_controller_icon(220, 170, 0)
+ICON_OFFLINE   = _make_controller_icon(180, 50, 50)
 
 
 class TrayApp:
     def __init__(self):
         self._state: dict = {}
+        self._ipc_error = _OFFLINE   # last _ipc sentinel (or None if OK)
         self._lock = threading.Lock()
         self._icon = pystray.Icon(
             "scuf-envision",
@@ -79,11 +101,16 @@ class TrayApp:
 
     def _build_menu(self):
         with self._lock:
-            state = dict(self._state)
+            state     = dict(self._state)
+            ipc_error = self._ipc_error
 
         connected = bool(state) and "status" not in state
 
-        if not state:
+        if ipc_error is _TIMEOUT:
+            status_text = "Driver not responding"
+        elif ipc_error is _BADRESP:
+            status_text = "Driver error (bad response)"
+        elif not state:
             status_text = "Driver not running"
         elif not connected:
             status_text = "Searching for controller\u2026"
@@ -120,7 +147,7 @@ class TrayApp:
 
         items.append(pystray.Menu.SEPARATOR)
 
-        # RGB submenu — always present; greyed when not connected or no RGB controller
+        # RGB submenu — always present; greyed when not connected or no RGB
         rgb_ok = connected and bool(state.get("rgb", False))
         rgb_menu = pystray.Menu(
             pystray.MenuItem("Off",             lambda _: self._set_rgb("rgb off")),
@@ -155,24 +182,41 @@ class TrayApp:
     def _poll_once(self) -> None:
         raw = _ipc("status")
         with self._lock:
-            self._state = json.loads(raw) if raw else {}
+            if raw is _OFFLINE or raw is _TIMEOUT:
+                self._state     = {}
+                self._ipc_error = raw
+            elif isinstance(raw, str):
+                try:
+                    self._state     = json.loads(raw)
+                    self._ipc_error = None
+                except (json.JSONDecodeError, ValueError):
+                    log.warning("Unexpected IPC response: %r", raw)
+                    self._state     = {}
+                    self._ipc_error = _BADRESP
         self._refresh_icon()
 
     def _poll_loop(self) -> None:
         while True:
-            self._poll_once()
+            try:
+                self._poll_once()
+            except Exception:
+                log.exception("Poll error")
             time.sleep(POLL_INTERVAL)
 
     def _refresh_icon(self) -> None:
         with self._lock:
-            state = dict(self._state)
+            state     = dict(self._state)
+            ipc_error = self._ipc_error
+
         connected = bool(state) and "status" not in state
         if not connected:
             self._icon.icon  = ICON_OFFLINE
-            self._icon.title = (
-                "SCUF Envision \u2014 driver offline" if not state
-                else "SCUF Envision \u2014 searching\u2026"
-            )
+            if ipc_error is _TIMEOUT:
+                self._icon.title = "SCUF Envision \u2014 not responding"
+            elif state.get("status") == "searching_for_controller":
+                self._icon.title = "SCUF Envision \u2014 searching\u2026"
+            else:
+                self._icon.title = "SCUF Envision \u2014 driver offline"
         elif state.get("connection") == "wireless":
             self._icon.icon  = ICON_WIRELESS
             self._icon.title = f"SCUF Envision \u2014 wireless | {state.get('profile', '?')}"
@@ -188,4 +232,6 @@ class TrayApp:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG,
+                        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     TrayApp().run()
