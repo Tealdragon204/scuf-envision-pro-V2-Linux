@@ -21,17 +21,17 @@ fi
 # Step 1: Install dependencies
 echo "[1/8] Installing dependencies..."
 if command -v pacman &>/dev/null; then
-    pacman -S --noconfirm --needed python-evdev libnotify python-pystray python-pillow
+    pacman -S --noconfirm --needed python-evdev libnotify python-pyqt6 python-pillow
 elif command -v apt &>/dev/null; then
-    apt install -y python3-evdev libnotify-bin python3-pil
-    # pystray is not in most apt repos; fall back to pip
-    pip install --quiet pystray 2>/dev/null || true
+    apt install -y python3-evdev libnotify-bin python3-pyqt6 python3-pil
+    # Fallback to pip if distro package is missing
+    pip install --quiet PyQt6 2>/dev/null || true
 elif command -v dnf &>/dev/null; then
     dnf install -y python3-evdev libnotify python3-pillow
-    pip install --quiet pystray 2>/dev/null || true
+    pip install --quiet PyQt6 2>/dev/null || true
 else
     echo "Unknown package manager. Please install python-evdev and libnotify manually."
-    echo "  pip install evdev pystray pillow"
+    echo "  pip install evdev PyQt6 pillow"
 fi
 
 # Ensure 'input' group exists (safety net for minimal installs; usually pre-exists)

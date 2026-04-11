@@ -5,16 +5,20 @@ scuf-tray — system tray for the SCUF Envision Pro V2 driver.
 Polls the driver IPC socket every 3 s and reflects connection state, battery
 level, active profile, and RGB mode in a notification-area icon with a menu.
 
-Requires: pystray, pillow
+Requires: PyQt6, pillow
 """
 
 import json
 import logging
 import socket
+import sys
 import threading
 import time
 from PIL import Image, ImageDraw
-import pystray
+from PIL.ImageQt import ImageQt
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtGui import QActionGroup, QIcon, QPixmap
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 log = logging.getLogger(__name__)
 
@@ -80,159 +84,166 @@ def _make_controller_icon(r: int, g: int, b: int) -> Image.Image:
     return img
 
 
-ICON_CONNECTED = _make_controller_icon(0, 180, 70)
-ICON_WIRELESS  = _make_controller_icon(220, 170, 0)
-ICON_OFFLINE   = _make_controller_icon(180, 50, 50)
+def _pil_to_qicon(img: Image.Image) -> QIcon:
+    return QIcon(QPixmap.fromImage(ImageQt(img)))
 
 
-class TrayApp:
-    def __init__(self):
+ICON_CONNECTED = _pil_to_qicon(_make_controller_icon(0, 180, 70))
+ICON_WIRELESS  = _pil_to_qicon(_make_controller_icon(220, 170, 0))
+ICON_OFFLINE   = _pil_to_qicon(_make_controller_icon(180, 50, 50))
+
+
+class TrayApp(QObject):
+    # Emitted from the poll thread; all UI mutations happen in the Qt main thread.
+    state_updated = pyqtSignal(dict, object)  # (state_dict, ipc_error_sentinel_or_None)
+
+    def __init__(self, app: QApplication):
+        super().__init__()
+        self._app       = app
         self._state: dict = {}
-        self._ipc_error = _OFFLINE   # last _ipc sentinel (or None if OK)
-        self._lock = threading.Lock()
-        self._icon = pystray.Icon(
-            "scuf_envision",
-            ICON_OFFLINE,
-            "SCUF Envision — offline",
-            menu=pystray.Menu(self._build_menu),
-        )
+        self._ipc_error = _OFFLINE
 
-    # ── menu ──────────────────────────────────────────────────────────────────
+        self._tray = QSystemTrayIcon(ICON_OFFLINE, self)
+        self._tray.setToolTip("SCUF Envision \u2014 offline")
+        self._menu = QMenu()
+        self._tray.setContextMenu(self._menu)
+        self._tray.show()
 
-    def _build_menu(self):
-        with self._lock:
-            state     = dict(self._state)
-            ipc_error = self._ipc_error
+        self.state_updated.connect(self._on_state_updated)
+        self._rebuild_menu()  # initial "Driver not running" state
 
+        threading.Thread(target=self._poll_loop, daemon=True).start()
+
+    # ── polling (worker thread) ───────────────────────────────────────────────
+
+    def _poll_loop(self) -> None:
+        while True:
+            try:
+                raw = _ipc("status")
+                if raw is _OFFLINE or raw is _TIMEOUT:
+                    self.state_updated.emit({}, raw)
+                elif isinstance(raw, str):
+                    try:
+                        self.state_updated.emit(json.loads(raw), None)
+                    except (json.JSONDecodeError, ValueError):
+                        log.warning("Unexpected IPC response: %r", raw)
+                        self.state_updated.emit({}, _BADRESP)
+            except Exception:
+                log.exception("Poll error")
+            time.sleep(POLL_INTERVAL)
+
+    # ── slot (Qt main thread) ─────────────────────────────────────────────────
+
+    def _on_state_updated(self, state: dict, ipc_error) -> None:
+        self._state     = state
+        self._ipc_error = ipc_error
+        self._refresh_icon()
+        self._rebuild_menu()
+
+    def _refresh_icon(self) -> None:
+        state = self._state
         connected = bool(state) and "status" not in state
-
-        if ipc_error is _TIMEOUT:
-            status_text = "Driver not responding"
-        elif ipc_error is _BADRESP:
-            status_text = "Driver error (bad response)"
-        elif not state:
-            status_text = "Driver not running"
-        elif not connected:
-            status_text = "Searching for controller\u2026"
+        if not connected:
+            self._tray.setIcon(ICON_OFFLINE)
+            if self._ipc_error is _TIMEOUT:
+                self._tray.setToolTip("SCUF Envision \u2014 not responding")
+            elif state.get("status") == "searching_for_controller":
+                self._tray.setToolTip("SCUF Envision \u2014 searching\u2026")
+            else:
+                self._tray.setToolTip("SCUF Envision \u2014 driver offline")
+        elif state.get("connection") == "wireless":
+            self._tray.setIcon(ICON_WIRELESS)
+            self._tray.setToolTip(f"SCUF Envision \u2014 wireless | {state.get('profile', '?')}")
         else:
-            status_text = f"Connected ({state.get('connection', '?')})"
+            self._tray.setIcon(ICON_CONNECTED)
+            self._tray.setToolTip(f"SCUF Envision \u2014 wired | {state.get('profile', '?')}")
 
-        items = [pystray.MenuItem(status_text, None, enabled=False)]
+    def _rebuild_menu(self) -> None:
+        state, err = self._state, self._ipc_error
+        connected  = bool(state) and "status" not in state
+        m = self._menu
+        m.clear()
+
+        if   err is _TIMEOUT:  status_text = "Driver not responding"
+        elif err is _BADRESP:  status_text = "Driver error (bad response)"
+        elif not state:        status_text = "Driver not running"
+        elif not connected:    status_text = "Searching for controller\u2026"
+        else:                  status_text = f"Connected ({state.get('connection', '?')})"
+        a = m.addAction(status_text); a.setEnabled(False)
 
         battery = state.get("battery", -1)
         if isinstance(battery, int) and battery >= 0:
-            items.append(pystray.MenuItem(f"Battery: {battery}%", None, enabled=False))
+            a = m.addAction(f"Battery: {battery}%"); a.setEnabled(False)
 
-        items.append(pystray.Menu.SEPARATOR)
+        m.addSeparator()
 
-        # Profile submenu — always present; greyed when not connected
-        profiles = state.get("profiles", [])
+        # Profile submenu
         active   = state.get("profile", "default")
+        profiles = state.get("profiles", [])
+        prof_label = f"Profile: {active}" if connected else "Profile"
+        prof_menu  = m.addMenu(prof_label)
+        prof_menu.setEnabled(connected)
+        if profiles:
+            grp = QActionGroup(prof_menu); grp.setExclusive(True)
+            for name in profiles:
+                a = prof_menu.addAction(name)
+                a.setCheckable(True)
+                a.setChecked(name == active)
+                a.setActionGroup(grp)
+                a.triggered.connect(lambda _checked, n=name: self._switch_profile(n))
+        else:
+            a = prof_menu.addAction("Not connected"); a.setEnabled(False)
 
-        def _profile_item(name):
-            return pystray.MenuItem(
-                name,
-                lambda _icon, _item, n=name: self._switch_profile(n),
-                checked=lambda _item, n=name: self._state.get("profile") == n,
-                radio=True,
-            )
+        m.addSeparator()
 
-        profile_submenu = (
-            pystray.Menu(*[_profile_item(p) for p in profiles])
-            if profiles
-            else pystray.Menu(pystray.MenuItem("Not connected", None, enabled=False))
-        )
-        profile_label = f"Profile: {active}" if connected else "Profile"
-        items.append(pystray.MenuItem(profile_label, profile_submenu, enabled=connected))
+        # RGB submenu
+        rgb_ok   = connected and bool(state.get("rgb", False))
+        rgb_menu = m.addMenu("RGB")
+        rgb_menu.setEnabled(rgb_ok)
+        for label, cmd in [
+            ("Off",             "rgb off"),
+            (None, None),
+            ("White",           "rgb static ffffff"),
+            ("Red",             "rgb static ff0000"),
+            ("Blue",            "rgb static 0044ff"),
+            ("Green",           "rgb static 00ff44"),
+            (None, None),
+            ("Breathe",         "rgb breathe"),
+            ("Rainbow",         "rgb rainbow"),
+            ("CPU Temperature", "rgb cpu-temperature"),
+        ]:
+            if label is None:
+                rgb_menu.addSeparator()
+            else:
+                rgb_menu.addAction(label, lambda c=cmd: _ipc(c))
 
-        items.append(pystray.Menu.SEPARATOR)
-
-        # RGB submenu — always present; greyed when not connected or no RGB
-        rgb_ok = connected and bool(state.get("rgb", False))
-        rgb_menu = pystray.Menu(
-            pystray.MenuItem("Off",             lambda _: self._set_rgb("rgb off")),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("White",           lambda _: self._set_rgb("rgb static ffffff")),
-            pystray.MenuItem("Red",             lambda _: self._set_rgb("rgb static ff0000")),
-            pystray.MenuItem("Blue",            lambda _: self._set_rgb("rgb static 0044ff")),
-            pystray.MenuItem("Green",           lambda _: self._set_rgb("rgb static 00ff44")),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Breathe",         lambda _: self._set_rgb("rgb breathe")),
-            pystray.MenuItem("Rainbow",         lambda _: self._set_rgb("rgb rainbow")),
-            pystray.MenuItem("CPU Temperature", lambda _: self._set_rgb("rgb cpu-temperature")),
-        )
-        items.append(pystray.MenuItem("RGB", rgb_menu, enabled=rgb_ok))
-
-        items.append(pystray.Menu.SEPARATOR)
-        items.append(pystray.MenuItem("Quit", lambda _: self._icon.stop()))
-
-        return tuple(items)
+        m.addSeparator()
+        m.addAction("Quit", self._app.quit)
 
     # ── actions ───────────────────────────────────────────────────────────────
 
     def _switch_profile(self, name: str) -> None:
         _ipc(f"profile {name}")
-        self._poll_once()
-
-    def _set_rgb(self, cmd: str) -> None:
-        _ipc(cmd)
-
-    # ── polling ───────────────────────────────────────────────────────────────
-
-    def _poll_once(self) -> None:
+        # Immediate refresh so the radio check updates without waiting 3 s.
         raw = _ipc("status")
-        with self._lock:
-            if raw is _OFFLINE or raw is _TIMEOUT:
-                self._state     = {}
-                self._ipc_error = raw
-            elif isinstance(raw, str):
-                try:
-                    self._state     = json.loads(raw)
-                    self._ipc_error = None
-                except (json.JSONDecodeError, ValueError):
-                    log.warning("Unexpected IPC response: %r", raw)
-                    self._state     = {}
-                    self._ipc_error = _BADRESP
-        self._refresh_icon()
-
-    def _poll_loop(self) -> None:
-        while True:
+        if isinstance(raw, str):
             try:
-                self._poll_once()
-            except Exception:
-                log.exception("Poll error")
-            time.sleep(POLL_INTERVAL)
+                self._on_state_updated(json.loads(raw), None)
+            except (json.JSONDecodeError, ValueError):
+                pass
 
-    def _refresh_icon(self) -> None:
-        with self._lock:
-            state     = dict(self._state)
-            ipc_error = self._ipc_error
 
-        connected = bool(state) and "status" not in state
-        if not connected:
-            self._icon.icon  = ICON_OFFLINE
-            if ipc_error is _TIMEOUT:
-                self._icon.title = "SCUF Envision \u2014 not responding"
-            elif state.get("status") == "searching_for_controller":
-                self._icon.title = "SCUF Envision \u2014 searching\u2026"
-            else:
-                self._icon.title = "SCUF Envision \u2014 driver offline"
-        elif state.get("connection") == "wireless":
-            self._icon.icon  = ICON_WIRELESS
-            self._icon.title = f"SCUF Envision \u2014 wireless | {state.get('profile', '?')}"
-        else:
-            self._icon.icon  = ICON_CONNECTED
-            self._icon.title = f"SCUF Envision \u2014 wired | {state.get('profile', '?')}"
-
-    # ── entry point ───────────────────────────────────────────────────────────
-
-    def run(self) -> None:
-        def _start_poll(icon):
-            threading.Thread(target=self._poll_loop, daemon=True).start()
-        self._icon.run(setup=_start_poll)
+def main() -> None:
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)  # tray-only app; no windows to close
+    if not QSystemTrayIcon.isSystemTrayAvailable():
+        print("scuf-tray: no system tray available on this desktop", file=sys.stderr)
+        sys.exit(1)
+    _tray = TrayApp(app)  # noqa: F841 — must stay alive for the event loop
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    TrayApp().run()
+    main()
