@@ -227,8 +227,9 @@ class TrayApp:
     # ── entry point ───────────────────────────────────────────────────────────
 
     def run(self) -> None:
-        threading.Thread(target=self._poll_loop, daemon=True).start()
-        self._icon.run()
+        def _start_poll(icon):
+            threading.Thread(target=self._poll_loop, daemon=True).start()
+        self._icon.run(setup=_start_poll)
 
 
 if __name__ == "__main__":
