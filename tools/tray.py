@@ -47,7 +47,7 @@ def _ipc(cmd: str):
             return b"".join(chunks).decode().strip()
     except (FileNotFoundError, ConnectionRefusedError):
         return _OFFLINE
-    except TimeoutError:
+    except (TimeoutError, BlockingIOError):
         return _TIMEOUT
     except OSError as e:
         log.debug("IPC error for %r: %s", cmd, e)
@@ -91,7 +91,7 @@ class TrayApp:
         self._ipc_error = _OFFLINE   # last _ipc sentinel (or None if OK)
         self._lock = threading.Lock()
         self._icon = pystray.Icon(
-            "scuf-envision",
+            "scuf_envision",
             ICON_OFFLINE,
             "SCUF Envision — offline",
             menu=pystray.Menu(self._build_menu),
