@@ -85,12 +85,9 @@ def _make_controller_icon(r: int, g: int, b: int) -> Image.Image:
 
 
 def _pil_to_qicon(img: Image.Image) -> QIcon:
+    # QPixmap requires a QGuiApplication to already exist — call only after
+    # QApplication(sys.argv) has been constructed.
     return QIcon(QPixmap.fromImage(ImageQt(img)))
-
-
-ICON_CONNECTED = _pil_to_qicon(_make_controller_icon(0, 180, 70))
-ICON_WIRELESS  = _pil_to_qicon(_make_controller_icon(220, 170, 0))
-ICON_OFFLINE   = _pil_to_qicon(_make_controller_icon(180, 50, 50))
 
 
 class TrayApp(QObject):
@@ -103,7 +100,12 @@ class TrayApp(QObject):
         self._state: dict = {}
         self._ipc_error = _OFFLINE
 
-        self._tray = QSystemTrayIcon(ICON_OFFLINE, self)
+        # Build icons here — QApplication already exists at this point.
+        self._icon_connected = _pil_to_qicon(_make_controller_icon(0, 180, 70))
+        self._icon_wireless  = _pil_to_qicon(_make_controller_icon(220, 170, 0))
+        self._icon_offline   = _pil_to_qicon(_make_controller_icon(180, 50, 50))
+
+        self._tray = QSystemTrayIcon(self._icon_offline, self)
         self._tray.setToolTip("SCUF Envision \u2014 offline")
         self._menu = QMenu()
         self._tray.setContextMenu(self._menu)
@@ -144,7 +146,7 @@ class TrayApp(QObject):
         state = self._state
         connected = bool(state) and "status" not in state
         if not connected:
-            self._tray.setIcon(ICON_OFFLINE)
+            self._tray.setIcon(self._icon_offline)
             if self._ipc_error is _TIMEOUT:
                 self._tray.setToolTip("SCUF Envision \u2014 not responding")
             elif state.get("status") == "searching_for_controller":
@@ -152,10 +154,10 @@ class TrayApp(QObject):
             else:
                 self._tray.setToolTip("SCUF Envision \u2014 driver offline")
         elif state.get("connection") == "wireless":
-            self._tray.setIcon(ICON_WIRELESS)
+            self._tray.setIcon(self._icon_wireless)
             self._tray.setToolTip(f"SCUF Envision \u2014 wireless | {state.get('profile', '?')}")
         else:
-            self._tray.setIcon(ICON_CONNECTED)
+            self._tray.setIcon(self._icon_connected)
             self._tray.setToolTip(f"SCUF Envision \u2014 wired | {state.get('profile', '?')}")
 
     def _rebuild_menu(self) -> None:
