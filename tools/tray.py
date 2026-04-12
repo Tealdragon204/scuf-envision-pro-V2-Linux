@@ -102,7 +102,7 @@ class TrayApp(QObject):
 
         # Build icons here — QApplication already exists at this point.
         self._icon_connected = _pil_to_qicon(_make_controller_icon(0, 180, 70))
-        self._icon_wireless  = _pil_to_qicon(_make_controller_icon(220, 170, 0))
+        self._icon_wireless  = _pil_to_qicon(_make_controller_icon(0, 180, 180))
         self._icon_offline   = _pil_to_qicon(_make_controller_icon(180, 50, 50))
 
         self._tray = QSystemTrayIcon(self._icon_offline, self)
