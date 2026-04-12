@@ -72,7 +72,7 @@ sudo bash install.sh
 ```
 
 This does everything automatically:
-- Installs dependencies: `python-evdev`, `libnotify`, `pystray`, `pillow`
+- Installs dependencies: `python-evdev`, `libnotify`, `python-pyqt6`, `pillow`
 - Loads the `uinput` kernel module (persists across reboots)
 - Installs udev rules (device permissions + hardware mixer init on plug)
 - Copies the driver to `/opt/scuf-envision`
@@ -457,12 +457,12 @@ scuf-tray
 
 The tray icon reflects driver state:
 - **Green** — controller connected (wired)
-- **Yellow** — controller connected (wireless)
+- **Teal** — controller connected (wireless)
 - **Red** — driver offline or searching for controller
 
 The menu shows connection status, battery level (when available), a profile switcher, and RGB shortcuts. The icon title includes the active profile name.
 
-> Requires `pystray` and `pillow` (`pip install pystray pillow` if not installed by the installer).
+> Requires `PyQt6` and `pillow` (installed automatically by `install.sh`).
 
 ### scuf-audio-toggle
 
@@ -592,13 +592,13 @@ Reboot after removal.
 
 ```bash
 # Arch/Garuda
-sudo pacman -S python-evdev python-pystray python-pillow
+sudo pacman -S python-evdev python-pyqt6 python-pillow
 
 # Ubuntu/Debian
-sudo apt install python3-evdev python3-pil && pip install pystray
+sudo apt install python3-evdev python3-pyqt6 python3-pil
 
 # Fedora
-sudo dnf install python3-evdev python3-pillow && pip install pystray
+sudo dnf install python3-evdev python3-pillow && pip install PyQt6
 
 # Load uinput
 sudo modprobe uinput
@@ -698,7 +698,7 @@ scuf-envision-pro-V2-Linux/
     scuf-audio-toggle   # CLI: disable/enable SCUF audio
     scuf-ctl            # CLI: IPC client (profile switch, RGB, status, ping)
     scuf-profile        # Launch wrapper: activate profile, restore on exit
-    tray.py             # System tray app (pystray + pillow)
+    tray.py             # System tray app (PyQt6 + pillow)
     scuf-tray.desktop   # XDG autostart entry for tray app
   config.ini.default    # Default config template
   50-scuf-audio.conf    # WirePlumber config for headphone audio
@@ -719,6 +719,7 @@ scuf-envision-pro-V2-Linux/
 | 18 | **Desktop layer** — persistent base layer across all profiles for window switching, media keys, etc. |
 | 19 | **On-screen keyboard** — invoke system OSK from a button bind *(blocked: waiting on xdg-desktop-portal gamepad input portal)* |
 | 20 | **DS4 / DualSense emulation** — optional alternative virtual device target; shows PlayStation button prompts in games |
+| 21 | **Config GUI** — PyQt6 settings window for editing profiles, button remaps, deadzones, response curves, RGB, and triggers without touching config files; live apply via IPC |
 
 ---
 
