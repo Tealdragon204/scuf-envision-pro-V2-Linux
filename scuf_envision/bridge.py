@@ -225,6 +225,7 @@ class BridgeService:
                         extras={
                             "set_rgb": self._set_rgb_mode,
                             "on_profile_switch": self._on_profile_switch,
+                            "on_layer_switch": self._on_layer_switch,
                         }
                     )
 
@@ -240,6 +241,13 @@ class BridgeService:
 
     def _handle_button(self, event):
         """Remap and forward a button event via the active profile's button map."""
+        sw_btn = self._profile.switch_button
+        if sw_btn is not None and event.code == sw_btn:
+            if event.value == 1:
+                layer = self._profile.cycle_layer()
+                if layer is not None:
+                    self._on_layer_switch(layer)
+            return  # consume key-down and key-up; never emit to virtual gamepad
         mapped = self._profile.effective_button_map.get(event.code)
         if mapped is not None:
             self.gamepad.emit_button(mapped, event.value)
@@ -366,6 +374,14 @@ class BridgeService:
         self._rgb_activity_state = ''
         self._reload_input_config()
 
+    def _on_layer_switch(self, layer_name: str) -> None:
+        import threading
+        from .hid import _notify
+        threading.Thread(target=_notify,
+                         args=("SCUF Layer", f"Switched to: {layer_name}"),
+                         daemon=True).start()
+        log.info("Layer switched to: %s", layer_name)
+
     def _check_rgb_activity(self) -> None:
         if not self._activity_tracking or self._rgb is None:
             return
@@ -425,6 +441,8 @@ class BridgeService:
             "rgb": self._rgb is not None,
             "battery": self._battery.level if self._battery else -1,
             "pid": os.getpid(),
+            "layer": self._profile.active_layer if self._profile else None,
+            "layers": self._profile.active_layers if self._profile else [],
         }
 
     def _release_physical(self):

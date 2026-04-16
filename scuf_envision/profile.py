@@ -2,6 +2,7 @@
 
 import configparser
 import logging
+from dataclasses import dataclass, field
 
 from evdev import ecodes
 
@@ -10,6 +11,14 @@ from .constants import BUTTON_MAP, PADDLE_MAP
 log = logging.getLogger(__name__)
 
 _BASE_MAP = {**BUTTON_MAP, **PADDLE_MAP}
+
+
+@dataclass
+class LayerConfig:
+    switch_button: int | None = None
+    stack: list[str] = field(default_factory=list)
+    layers: dict[str, dict[int, int]] = field(default_factory=dict)
+    active_idx: int = 0
 
 
 def _resolve_code(name: str) -> int | None:
@@ -25,13 +34,15 @@ class ProfileManager:
     """Manages named profiles and the active button remap table.
 
     Profiles are defined as {physical_code: virtual_code} override dicts on top
-    of the combined BUTTON_MAP + PADDLE_MAP. The effective_button_map property
-    is cached and only recomputed on switch().
+    of the combined BUTTON_MAP + PADDLE_MAP. Layers add a second tier of overrides
+    within a profile, cycled by a designated switch_button. The effective_button_map
+    property reflects the three-way merge: BASE_MAP → profile overrides → layer overrides.
     """
 
-    def __init__(self, profiles: dict[str, dict[int, int]]):
-        # profiles: name → {physical_code_int: virtual_code_int overrides}
+    def __init__(self, profiles: dict[str, dict[int, int]],
+                 layer_configs: dict[str, LayerConfig] | None = None):
         self._profiles = profiles
+        self._layer_configs: dict[str, LayerConfig] = layer_configs or {}
         self._active = "default"
         self._effective: dict[int, int] = dict(_BASE_MAP)
 
@@ -43,15 +54,56 @@ class ProfileManager:
     def effective_button_map(self) -> dict[int, int]:
         return self._effective
 
+    @property
+    def active_layer(self) -> str | None:
+        lc = self._layer_configs.get(self._active)
+        return lc.stack[lc.active_idx] if lc and lc.stack else None
+
+    @property
+    def active_layers(self) -> list[str]:
+        lc = self._layer_configs.get(self._active)
+        return lc.stack if lc else []
+
+    @property
+    def switch_button(self) -> int | None:
+        lc = self._layer_configs.get(self._active)
+        return lc.switch_button if lc else None
+
+    def _rebuild_effective(self) -> None:
+        overrides = self._profiles.get(self._active, {})
+        lc = self._layer_configs.get(self._active)
+        layer_ovr = lc.layers.get(lc.stack[lc.active_idx], {}) if lc and lc.stack else {}
+        self._effective = {**_BASE_MAP, **overrides, **layer_ovr}
+
     def switch(self, name: str) -> None:
         """Switch to a named profile. Raises KeyError if not found."""
         if name != "default" and name not in self._profiles:
             raise KeyError(name)
         old = self._active
         self._active = name
-        overrides = self._profiles.get(name, {})
-        self._effective = {**_BASE_MAP, **overrides}
-        log.info("Profile switched: %s -> %s (%d override(s))", old, name, len(overrides))
+        lc = self._layer_configs.get(name)
+        if lc:
+            lc.active_idx = 0
+        self._rebuild_effective()
+        log.info("Profile switched: %s -> %s (%d override(s))", old, name,
+                 len(self._profiles.get(name, {})))
+
+    def cycle_layer(self) -> str | None:
+        """Advance to the next layer. Returns new layer name, or None if no layers."""
+        lc = self._layer_configs.get(self._active)
+        if not lc or not lc.stack:
+            return None
+        lc.active_idx = (lc.active_idx + 1) % len(lc.stack)
+        self._rebuild_effective()
+        return lc.stack[lc.active_idx]
+
+    def switch_layer(self, name: str) -> None:
+        """Switch to a named layer in the active profile. Raises KeyError if not found."""
+        lc = self._layer_configs.get(self._active)
+        if lc is None or name not in lc.layers:
+            raise KeyError(name)
+        lc.active_idx = lc.stack.index(name)
+        self._rebuild_effective()
 
     def list_profiles(self) -> list[str]:
         return ["default"] + sorted(k for k in self._profiles if k != "default")
@@ -65,6 +117,8 @@ class ProfileManager:
             if not section.startswith(prefix):
                 continue
             name = section[len(prefix):]
+            if "." in name:
+                continue  # skip .input, .rgb.*, .layers, .layer.* subsections
             overrides: dict[int, int] = {}
             for raw_name, target_name in config[section].items():
                 raw = _resolve_code(raw_name)
@@ -77,4 +131,29 @@ class ProfileManager:
         n = len(profiles)
         if n:
             log.info("Loaded %d profile(s): %s", n, ", ".join(sorted(profiles)))
-        return cls(profiles)
+
+        layer_configs: dict[str, LayerConfig] = {}
+        for name in profiles:
+            meta = f"profile.{name}.layers"
+            if not config.has_section(meta):
+                continue
+            sw_raw = config.get(meta, "switch_button", fallback=None)
+            sw_btn = _resolve_code(sw_raw) if sw_raw else None
+            stack = [s.strip() for s in config.get(meta, "stack", fallback="").split(",")
+                     if s.strip()]
+            layers: dict[str, dict[int, int]] = {}
+            for ln in stack:
+                sec = f"profile.{name}.layer.{ln}"
+                ovr: dict[int, int] = {}
+                if config.has_section(sec):
+                    for rn, tn in config[sec].items():
+                        r, t = _resolve_code(rn), _resolve_code(tn)
+                        if r is not None and t is not None:
+                            ovr[r] = t
+                layers[ln] = ovr
+            if stack:
+                layer_configs[name] = LayerConfig(
+                    switch_button=sw_btn, stack=stack, layers=layers)
+                log.debug("Loaded layers for profile %r: %s", name, stack)
+
+        return cls(profiles, layer_configs)
