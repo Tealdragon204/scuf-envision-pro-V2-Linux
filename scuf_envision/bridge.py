@@ -371,8 +371,13 @@ class BridgeService:
                   p['jitter_threshold'])
 
     def _on_profile_switch(self) -> None:
+        import threading
+        from .hid import _notify
         self._rgb_activity_state = ''
         self._reload_input_config()
+        threading.Thread(target=_notify,
+                         args=("SCUF Profile", f"Switched to: {self._profile.active_name}"),
+                         daemon=True).start()
 
     def _on_layer_switch(self, layer_name: str) -> None:
         import threading
