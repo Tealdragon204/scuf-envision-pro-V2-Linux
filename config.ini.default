@@ -250,3 +250,29 @@ poll_timeout_ms = 2
 # [profile.BIOSHOCK.input]
 # left_stick_anti_deadzone = 7000
 # right_stick_anti_deadzone = 7000
+#
+# ---------------------------------------------------------------------------
+# Layers — multiple button maps within a single profile
+# ---------------------------------------------------------------------------
+# Layers let you cycle through different button maps at runtime by pressing a
+# designated paddle. Use 'scuf-ctl layer NAME' to switch layers via IPC, or
+# configure a switch_button to cycle them with a paddle press.
+#
+# [profile.NAME.layers]
+# switch_button = BTN_TRIGGER_HAPPY3   # paddle that cycles layers on key-down
+# stack = base,combat,stealth          # ordered layer names
+#
+# [profile.NAME.layer.base]
+# # empty = just the profile's base overrides
+#
+# [profile.NAME.layer.combat]
+# BTN_TRIGGER_HAPPY1 = BTN_SOUTH
+# BTN_TRIGGER_HAPPY2 = BTN_EAST
+#
+# [profile.NAME.layer.stealth]
+# BTN_TRIGGER_HAPPY1 = BTN_NORTH
+# BTN_TRIGGER_HAPPY2 = BTN_WEST
+#
+# The switch_button is always consumed (never sent to the game). Each press
+# advances to the next layer; wraps back to the first after the last.
+# A notify-send fires on every switch showing the new layer name.

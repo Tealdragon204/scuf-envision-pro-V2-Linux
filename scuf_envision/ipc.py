@@ -68,7 +68,9 @@ class IPCServer:
             if profile_mgr is None:
                 return json.dumps({"status": "searching_for_controller"})
             return json.dumps({**state, "profile": profile_mgr.active_name,
-                                "profiles": profile_mgr.list_profiles()})
+                                "profiles": profile_mgr.list_profiles(),
+                                "layer": profile_mgr.active_layer,
+                                "layers": profile_mgr.active_layers})
 
         if cmd.startswith("profile "):
             if profile_mgr is None:
@@ -82,6 +84,19 @@ class IPCServer:
                 return "ok"
             except KeyError:
                 return f"error: unknown profile '{name}'"
+
+        if cmd.startswith("layer "):
+            if profile_mgr is None:
+                return "error: controller not connected yet"
+            name = cmd[len("layer "):].strip()
+            try:
+                profile_mgr.switch_layer(name)
+                cb = (extras or {}).get("on_layer_switch")
+                if cb:
+                    cb(name)
+                return "ok"
+            except KeyError:
+                return f"error: unknown layer '{name}'"
 
         if cmd.startswith("rgb "):
             set_rgb = (extras or {}).get("set_rgb")
