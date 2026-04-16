@@ -62,6 +62,7 @@ class BridgeService:
         self._sleep_after: float = 300.0
         self._physical = None
         self._grabbed_devices = []
+        self._secondary_devices: list = []
         self._running = False
         self._profile: ProfileManager | None = None
         self._ipc: IPCServer | None = ipc_server
@@ -168,7 +169,8 @@ class BridgeService:
                 sec_dev = evdev.InputDevice(sec_path)
                 sec_dev.grab()
                 self._grabbed_devices.append(sec_dev)
-                log.debug("Grabbed secondary: %s", sec_path)
+                self._secondary_devices.append(sec_dev)
+                log.debug("Grabbed secondary: %s (%s)", sec_path, sec_dev.name)
             except (OSError, PermissionError) as e:
                 log.warning("Could not grab secondary device %s: %s", sec_path, e)
 
@@ -194,6 +196,10 @@ class BridgeService:
         poll.register(phys_fd, select.POLLIN)
         timeout = _poll_timeout_ms()
 
+        secondary_fd_map = {dev.fd: dev for dev in self._secondary_devices}
+        for fd in secondary_fd_map:
+            poll.register(fd, select.POLLIN)
+
         vgpad_fd = self.gamepad.fd if self._rumble else -1
         if vgpad_fd >= 0:
             poll.register(vgpad_fd, select.POLLIN)
@@ -216,6 +222,14 @@ class BridgeService:
                     except OSError as e:
                         if self._running:
                             log.error("Device read error: %s", e)
+                            raise _DeviceDisconnected() from e
+                elif ready_fd in secondary_fd_map:
+                    try:
+                        for event in secondary_fd_map[ready_fd].read():
+                            self._handle_secondary_event(event)
+                    except OSError as e:
+                        if self._running:
+                            log.error("Secondary device read error: %s", e)
                             raise _DeviceDisconnected() from e
                 elif ready_fd == vgpad_fd:
                     self._handle_ff_events()
@@ -240,19 +254,35 @@ class BridgeService:
             self.gamepad.syn()
 
     def _handle_button(self, event):
+        self._dispatch_button(event.code, event.value)
+
+    def _dispatch_button(self, code: int, value: int):
         """Remap and forward a button event via the active profile's button map."""
         sw_btn = self._profile.switch_button
-        if sw_btn is not None and event.code == sw_btn:
-            if event.value == 1:
+        if sw_btn is not None and code == sw_btn:
+            if value == 1:
                 layer = self._profile.cycle_layer()
                 if layer is not None:
                     self._on_layer_switch(layer)
             return  # consume key-down and key-up; never emit to virtual gamepad
-        mapped = self._profile.effective_button_map.get(event.code)
+        mapped = self._profile.effective_button_map.get(code)
         if mapped is not None:
-            self.gamepad.emit_button(mapped, event.value)
-        elif event.value == 1:
-            log.debug("Unknown button: code=0x%03x (%d)", event.code, event.code)
+            self.gamepad.emit_button(mapped, value)
+        elif value == 1:
+            log.debug("Unknown button: code=0x%03x (%d)", code, code)
+
+    def _handle_secondary_event(self, event):
+        """Pre-remap secondary device events (paddles as face codes → TRIGGER_HAPPY)."""
+        from .constants import SECONDARY_PADDLE_MAP
+        if event.type == ecodes.EV_SYN:
+            self.gamepad.syn()
+            return
+        if event.type != ecodes.EV_KEY:
+            return
+        code = SECONDARY_PADDLE_MAP.get(event.code)
+        if code is not None:
+            self._last_input_time = time.monotonic()
+            self._dispatch_button(code, event.value)
 
     def _handle_axis(self, event):
         from .constants import AXIS_MAP
@@ -458,6 +488,7 @@ class BridgeService:
             except OSError:
                 pass
         self._grabbed_devices.clear()
+        self._secondary_devices.clear()
         self._physical = None
 
     def _zero_virtual_outputs(self):

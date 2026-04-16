@@ -192,15 +192,16 @@ poll_timeout_ms = 2
 #   BTN_TL2             = L3 — left stick click (SCUF quirk)
 #   BTN_TR2             = R3 — right stick click (SCUF quirk)
 #   BTN_MODE            = Guide / Xbox button
-#   BTN_TRIGGER_HAPPY1  = Paddle 1
-#   BTN_TRIGGER_HAPPY2  = Paddle 2
-#   BTN_TRIGGER_HAPPY3  = Paddle 3
+#   BTN_TRIGGER_HAPPY1  = Paddle 1 (bottom-left)
+#   BTN_TRIGGER_HAPPY2  = Paddle 2 (bottom-right)
+#   BTN_TRIGGER_HAPPY3  = Paddle 3 (top-left)
+#   BTN_TRIGGER_HAPPY4  = Paddle 4 (top-right)
 #
 # Virtual output codes (what games see after remapping):
 #   BTN_SOUTH  = A    BTN_NORTH  = X    BTN_TL    = LB    BTN_SELECT  = Back
 #   BTN_EAST   = B    BTN_WEST   = Y    BTN_TR    = RB    BTN_START   = Start
 #   BTN_THUMBL = L3   BTN_THUMBR = R3   BTN_MODE  = Guide
-#   BTN_TRIGGER_HAPPY1/2/3 = Paddles (pass-through)
+#   BTN_TRIGGER_HAPPY1/2/3/4 = Paddles (pass-through)
 #
 # Run 'scuf-ctl status' to see the active profile.
 # Run 'scuf-ctl profile NAME' to switch profiles without restarting.
