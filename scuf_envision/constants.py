@@ -40,11 +40,25 @@ BUTTON_MAP = {
     ecodes.BTN_MODE:           ecodes.BTN_MODE,           # Guide/Xbox button (correct)
 }
 
-# Paddle buttons (V2 has 3 physical paddles, maps to Xbox Elite paddle slots)
+# Paddle buttons — V2 has 4 physical paddles. The secondary evdev device reports
+# them as face button codes (BTN_SOUTH/EAST/C/NORTH). SECONDARY_PADDLE_MAP below
+# normalises them to unique BTN_TRIGGER_HAPPY codes before profile remapping.
 PADDLE_MAP = {
-    ecodes.BTN_TRIGGER_HAPPY1: ecodes.BTN_TRIGGER_HAPPY1,  # Paddle 1
-    ecodes.BTN_TRIGGER_HAPPY2: ecodes.BTN_TRIGGER_HAPPY2,  # Paddle 2
-    ecodes.BTN_TRIGGER_HAPPY3: ecodes.BTN_TRIGGER_HAPPY3,  # Paddle 3
+    ecodes.BTN_TRIGGER_HAPPY1: ecodes.BTN_TRIGGER_HAPPY1,  # Paddle 1 (bottom-left)
+    ecodes.BTN_TRIGGER_HAPPY2: ecodes.BTN_TRIGGER_HAPPY2,  # Paddle 2 (bottom-right)
+    ecodes.BTN_TRIGGER_HAPPY3: ecodes.BTN_TRIGGER_HAPPY3,  # Paddle 3 (top-left)
+    ecodes.BTN_TRIGGER_HAPPY4: ecodes.BTN_TRIGGER_HAPPY4,  # Paddle 4 (top-right)
+}
+
+# The secondary evdev device (grabbed by bridge, separate from the main gamepad
+# interface) emits face button codes for paddle presses because the controller
+# firmware binds paddles to face buttons by default. Pre-remap to unique codes
+# before the profile layer so paddles and face buttons are independently bindable.
+SECONDARY_PADDLE_MAP = {
+    ecodes.BTN_SOUTH:  ecodes.BTN_TRIGGER_HAPPY1,  # bottom-left paddle
+    ecodes.BTN_EAST:   ecodes.BTN_TRIGGER_HAPPY2,  # bottom-right paddle
+    ecodes.BTN_C:      ecodes.BTN_TRIGGER_HAPPY3,  # top-left paddle
+    ecodes.BTN_NORTH:  ecodes.BTN_TRIGGER_HAPPY4,  # top-right paddle
 }
 
 # --- Axis mapping ---
