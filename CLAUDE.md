@@ -64,7 +64,7 @@ up to 5 min while waiting for controller reconnection.
 | 13 | Vibration/haptics passthrough | ✅ | `scuf_envision/rumble.py`, `scuf_envision/hid.py`, `virtual_gamepad.py` |
 | 14 | Analog deadzone config (SW per-stick, anti-deadzone, per-profile; HW deadzones blocked pending USB capture verification) | ✅ | `scuf_envision/constants.py`, `scuf_envision/hid.py`, `scuf_envision/input_filter.py`, `scuf_envision/config.py`, `bridge.py` |
 | 15 | Tray app (PyQt6 QSystemTrayIcon; connection/battery status, profile switcher, RGB shortcuts) | ✅ | `tools/tray.py` |
-| 16 | Layers — per-profile layer stack, paddle/button layer switching, layer-switch `notify-send` with layer name | Planned | `bridge.py`, `scuf_envision/config.py` |
+| 16 | Layers — per-profile layer stack, paddle/button layer switching, layer-switch `notify-send` with layer name | ✅ | `scuf_envision/profile.py`, `bridge.py`, `scuf_envision/ipc.py`, `tools/scuf-ctl` |
 | 17 | Macros — button-to-sequence bindings per layer, delay support | Planned | `bridge.py`, `scuf_envision/config.py` |
 | 18 | Desktop layer — persistent global base layer across all profiles; lower priority than profile bindings; intended for window switching, media keys, etc. | Planned | `bridge.py`, `scuf_envision/config.py` |
 | 19 | OSK integration — invoke system on-screen keyboard from a button bind | Blocked | `bridge.py` — waiting on xdg-desktop-portal gamepad input portal |
