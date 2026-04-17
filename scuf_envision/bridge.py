@@ -225,8 +225,7 @@ class BridgeService:
                             raise _DeviceDisconnected() from e
                 elif ready_fd in secondary_fd_map:
                     try:
-                        for event in secondary_fd_map[ready_fd].read():
-                            self._handle_secondary_event(event)
+                        secondary_fd_map[ready_fd].read()  # drain; secondary devices emit no buttons
                     except OSError as e:
                         if self._running:
                             log.error("Secondary device read error: %s", e)
@@ -270,19 +269,6 @@ class BridgeService:
             self.gamepad.emit_button(mapped, value)
         elif value == 1:
             log.debug("Unknown button: code=0x%03x (%d)", code, code)
-
-    def _handle_secondary_event(self, event):
-        """Pre-remap secondary device events (paddles as face codes → TRIGGER_HAPPY)."""
-        from .constants import SECONDARY_PADDLE_MAP
-        if event.type == ecodes.EV_SYN:
-            self.gamepad.syn()
-            return
-        if event.type != ecodes.EV_KEY:
-            return
-        code = SECONDARY_PADDLE_MAP.get(event.code)
-        if code is not None:
-            self._last_input_time = time.monotonic()
-            self._dispatch_button(code, event.value)
 
     def _handle_axis(self, event):
         from .constants import AXIS_MAP
