@@ -12,6 +12,23 @@ log = logging.getLogger(__name__)
 
 _BASE_MAP: dict[int, int] = {code: code for code in HID_BUTTON_MAP.values()}
 
+# Friendly aliases for the config file — users write P1/S1/G1/PROFILE instead of
+# BTN_TRIGGER_HAPPY* which are arbitrary kernel slot names with no inherent meaning.
+_ALIASES: dict[str, int] = {
+    "P1":      ecodes.BTN_TRIGGER_HAPPY1,
+    "P2":      ecodes.BTN_TRIGGER_HAPPY2,
+    "P3":      ecodes.BTN_TRIGGER_HAPPY3,
+    "P4":      ecodes.BTN_TRIGGER_HAPPY4,
+    "S1":      ecodes.BTN_TRIGGER_HAPPY5,
+    "S2":      ecodes.BTN_TRIGGER_HAPPY6,
+    "G1":      ecodes.BTN_TRIGGER_HAPPY7,
+    "G2":      ecodes.BTN_TRIGGER_HAPPY8,
+    "G3":      ecodes.BTN_TRIGGER_HAPPY9,
+    "G4":      ecodes.BTN_TRIGGER_HAPPY10,
+    "G5":      ecodes.BTN_TRIGGER_HAPPY11,
+    "PROFILE": ecodes.BTN_TRIGGER_HAPPY12,
+}
+
 
 @dataclass
 class LayerConfig:
@@ -22,10 +39,17 @@ class LayerConfig:
 
 
 def _resolve_code(name: str) -> int | None:
-    """Resolve an evdev code name (e.g. 'BTN_SOUTH') to its integer value."""
-    code = getattr(ecodes, name.upper().strip(), None)
+    """Resolve a button name to its evdev integer value.
+
+    Accepts friendly aliases (P1–P4, S1/S2, G1–G5, PROFILE) or any evdev
+    code name (BTN_SOUTH, BTN_TL, etc.).
+    """
+    upper = name.upper().strip()
+    if upper in _ALIASES:
+        return _ALIASES[upper]
+    code = getattr(ecodes, upper, None)
     if code is None or not isinstance(code, int):
-        log.warning("Unknown evdev code %r in profile (skipped)", name)
+        log.warning("Unknown button name %r in profile (skipped)", name)
         return None
     return code
 

@@ -181,30 +181,27 @@ poll_timeout_ms = 2
 # one output for another. Any button not listed passes through unchanged.
 # Profiles are switched live — no service restart needed.
 #
-# Button codes (physical → default virtual, use these in profile sections):
-#   BTN_SOUTH           = A button
-#   BTN_EAST            = B button
-#   BTN_NORTH           = X button
-#   BTN_WEST            = Y button
-#   BTN_TL              = LB bumper
-#   BTN_TR              = RB bumper
-#   BTN_SELECT          = Select / Back
-#   BTN_START           = Start / Menu
-#   BTN_THUMBL          = L3 — left stick click
-#   BTN_THUMBR          = R3 — right stick click
-#   BTN_MODE            = Home / Xbox / Guide
-#   BTN_TRIGGER_HAPPY1  = Paddle P1 (rear, bottom-left)
-#   BTN_TRIGGER_HAPPY2  = Paddle P2 (rear, bottom-right)
-#   BTN_TRIGGER_HAPPY3  = Paddle P3 (rear, top-left)
-#   BTN_TRIGGER_HAPPY4  = Paddle P4 (rear, top-right)
-#   BTN_TRIGGER_HAPPY5  = SAX S1 (left grip bumper)
-#   BTN_TRIGGER_HAPPY6  = SAX S2 (right grip bumper)
-#   BTN_TRIGGER_HAPPY7  = G1
-#   BTN_TRIGGER_HAPPY8  = G2
-#   BTN_TRIGGER_HAPPY9  = G3
-#   BTN_TRIGGER_HAPPY10 = G4
-#   BTN_TRIGGER_HAPPY11 = G5
-#   BTN_TRIGGER_HAPPY12 = Profile button
+# Button names for profile sections:
+#
+#   Standard face / shoulder / stick buttons:
+#     BTN_SOUTH  = A       BTN_NORTH  = X       BTN_TL    = LB
+#     BTN_EAST   = B       BTN_WEST   = Y        BTN_TR    = RB
+#     BTN_SELECT = Back    BTN_START  = Menu     BTN_MODE  = Home/Guide
+#     BTN_THUMBL = L3      BTN_THUMBR = R3
+#
+#   SCUF extra buttons (use these short names directly):
+#     P1  = rear paddle, bottom-left
+#     P2  = rear paddle, bottom-right
+#     P3  = rear paddle, top-left
+#     P4  = rear paddle, top-right
+#     S1  = SAX grip bumper, left
+#     S2  = SAX grip bumper, right
+#     G1  = G-key 1
+#     G2  = G-key 2
+#     G3  = G-key 3
+#     G4  = G-key 4
+#     G5  = G-key 5
+#     PROFILE = profile button
 #
 # Run 'scuf-ctl status' to see the active profile.
 # Run 'scuf-ctl profile NAME' to switch profiles without restarting.
@@ -236,13 +233,13 @@ poll_timeout_ms = 2
 # Example: map paddles and SAX/G-keys to standard buttons
 # ---------------------------------------------------------------------------
 # [profile.BIOSHOCK]
-# BTN_TRIGGER_HAPPY1 = BTN_SOUTH    # P1 (rear bottom-left) → A
-# BTN_TRIGGER_HAPPY2 = BTN_EAST     # P2 (rear bottom-right) → B
-# BTN_TRIGGER_HAPPY3 = BTN_NORTH    # P3 (rear top-left) → X
-# BTN_TRIGGER_HAPPY4 = BTN_WEST     # P4 (rear top-right) → Y
-# BTN_TRIGGER_HAPPY5 = BTN_TL       # S1 (left SAX grip) → LB
-# BTN_TRIGGER_HAPPY6 = BTN_TR       # S2 (right SAX grip) → RB
-# BTN_TRIGGER_HAPPY7 = BTN_SELECT   # G1 → Back
+# P1 = BTN_SOUTH    # rear paddle bottom-left → A
+# P2 = BTN_EAST     # rear paddle bottom-right → B
+# P3 = BTN_NORTH    # rear paddle top-left → X
+# P4 = BTN_WEST     # rear paddle top-right → Y
+# S1 = BTN_TL       # left SAX grip → LB
+# S2 = BTN_TR       # right SAX grip → RB
+# G1 = BTN_SELECT   # G1 → Back
 #
 # ---------------------------------------------------------------------------
 # Example: swap A and B (Nintendo button layout muscle memory)
@@ -267,19 +264,19 @@ poll_timeout_ms = 2
 # configure a switch_button to cycle them with a paddle press.
 #
 # [profile.NAME.layers]
-# switch_button = BTN_TRIGGER_HAPPY3   # paddle that cycles layers on key-down
-# stack = base,combat,stealth          # ordered layer names
+# switch_button = P3             # paddle that cycles layers on key-down
+# stack = base,combat,stealth   # ordered layer names
 #
 # [profile.NAME.layer.base]
 # # empty = just the profile's base overrides
 #
 # [profile.NAME.layer.combat]
-# BTN_TRIGGER_HAPPY1 = BTN_SOUTH
-# BTN_TRIGGER_HAPPY2 = BTN_EAST
+# P1 = BTN_SOUTH
+# P2 = BTN_EAST
 #
 # [profile.NAME.layer.stealth]
-# BTN_TRIGGER_HAPPY1 = BTN_NORTH
-# BTN_TRIGGER_HAPPY2 = BTN_WEST
+# P1 = BTN_NORTH
+# P2 = BTN_WEST
 #
 # The switch_button is always consumed (never sent to the game). Each press
 # advances to the next layer; wraps back to the first after the last.
