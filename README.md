@@ -160,17 +160,17 @@ Profiles let you assign different button remaps and input settings per game, swi
 ```ini
 # Map paddles to face buttons
 [profile.BIOSHOCK]
-BTN_TRIGGER_HAPPY1 = BTN_SOUTH
-BTN_TRIGGER_HAPPY2 = BTN_EAST
-BTN_TRIGGER_HAPPY3 = BTN_NORTH
+P1 = CROSS
+P2 = CIRCLE
+P3 = SQUARE
 
-# Swap A and B (Nintendo muscle memory)
+# Swap Cross and Circle (Nintendo muscle memory)
 [profile.NINTENDO_LAYOUT]
-BTN_SOUTH = BTN_EAST
-BTN_EAST  = BTN_SOUTH
+CROSS  = CIRCLE
+CIRCLE = CROSS
 ```
 
-Keys are the raw SCUF hardware codes; values are what games receive. See [Button Mapping Reference](#button-mapping-reference) for the full code list.
+Keys are the physical button to intercept; values are what games receive. Raw evdev names (`BTN_SOUTH`, `BTN_TL`, etc.) also work everywhere. See [HID Raw Protocol Reference](#hid-raw-protocol-reference) for the full alias list.
 
 **Switch profiles live:**
 
@@ -646,38 +646,41 @@ by `data[0]` and `data[2]`:
 `data[3:7]` is a 32-bit little-endian bitmask. Each set bit maps to one button or
 DPAD direction emitted to the virtual Xbox gamepad.
 
-| Bitmask | Physical control | Virtual output code |
-|---|---|---|
-| `0x00000001` | D-Pad Up | `ABS_HAT0Y = -1` |
-| `0x00000002` | D-Pad Down | `ABS_HAT0Y = +1` |
-| `0x00000004` | D-Pad Left | `ABS_HAT0X = -1` |
-| `0x00000008` | D-Pad Right | `ABS_HAT0X = +1` |
-| `0x00000020` | A | `BTN_SOUTH` |
-| `0x00000040` | X | `BTN_NORTH` |
-| `0x00000080` | Y | `BTN_WEST` |
-| `0x00000100` | B | `BTN_EAST` |
-| `0x00000200` | LB | `BTN_TL` |
-| `0x00000400` | RB | `BTN_TR` |
-| `0x00002000` | L3 (left stick click) | `BTN_THUMBL` |
-| `0x00004000` | R3 (right stick click) | `BTN_THUMBR` |
-| `0x00010000` | Back / Select | `BTN_SELECT` |
-| `0x00020000` | Start / Menu | `BTN_START` |
-| `0x00040000` | P1 — rear paddle, bottom-left | `BTN_TRIGGER_HAPPY1` |
-| `0x00080000` | P2 — rear paddle, bottom-right | `BTN_TRIGGER_HAPPY2` |
-| `0x00100000` | P3 — rear paddle, top-left | `BTN_TRIGGER_HAPPY3` |
-| `0x00200000` | P4 — rear paddle, top-right | `BTN_TRIGGER_HAPPY4` |
-| `0x00400000` | S1 — SAX left grip | `BTN_TRIGGER_HAPPY5` |
-| `0x00800000` | S2 — SAX right grip | `BTN_TRIGGER_HAPPY6` |
-| `0x01000000` | Home / Xbox / Power | `BTN_MODE` |
-| `0x04000000` | G1 | `BTN_TRIGGER_HAPPY7` |
-| `0x08000000` | G2 | `BTN_TRIGGER_HAPPY8` |
-| `0x10000000` | G3 | `BTN_TRIGGER_HAPPY9` |
-| `0x20000000` | G4 | `BTN_TRIGGER_HAPPY10` |
-| `0x40000000` | G5 | `BTN_TRIGGER_HAPPY11` |
-| `0x80000000` | Profile button | `BTN_TRIGGER_HAPPY12` |
+| Bitmask | Physical control | Config alias | evdev output code |
+|---|---|---|---|
+| `0x00000001` | D-Pad Up | — | `ABS_HAT0Y = -1` |
+| `0x00000002` | D-Pad Down | — | `ABS_HAT0Y = +1` |
+| `0x00000004` | D-Pad Left | — | `ABS_HAT0X = -1` |
+| `0x00000008` | D-Pad Right | — | `ABS_HAT0X = +1` |
+| `0x00000020` | Cross / A | `CROSS` `A` | `BTN_SOUTH` |
+| `0x00000040` | Square / X | `SQUARE` `X` | `BTN_NORTH` |
+| `0x00000080` | Triangle / Y | `TRIANGLE` `Y` | `BTN_WEST` |
+| `0x00000100` | Circle / B | `CIRCLE` `B` | `BTN_EAST` |
+| `0x00000200` | L1 / LB | `L1` `LB` | `BTN_TL` |
+| `0x00000400` | R1 / RB | `R1` `RB` | `BTN_TR` |
+| `0x00002000` | L3 / LS (left stick click) | `L3` `LS` | `BTN_THUMBL` |
+| `0x00004000` | R3 / RS (right stick click) | `R3` `RS` | `BTN_THUMBR` |
+| `0x00010000` | Select / Back / Share | `SELECT` `BACK` `SHARE` | `BTN_SELECT` |
+| `0x00020000` | Start / Menu / Options | `START` `MENU` `OPTIONS` | `BTN_START` |
+| `0x00040000` | P1 — rear paddle, bottom-left | `P1` | `BTN_TRIGGER_HAPPY1` |
+| `0x00080000` | P2 — rear paddle, bottom-right | `P2` | `BTN_TRIGGER_HAPPY2` |
+| `0x00100000` | P3 — rear paddle, top-left | `P3` | `BTN_TRIGGER_HAPPY3` |
+| `0x00200000` | P4 — rear paddle, top-right | `P4` | `BTN_TRIGGER_HAPPY4` |
+| `0x00400000` | S1 — SAX left grip | `S1` | `BTN_TRIGGER_HAPPY5` |
+| `0x00800000` | S2 — SAX right grip | `S2` | `BTN_TRIGGER_HAPPY6` |
+| `0x01000000` | Home / PS / Xbox / Power | `HOME` `PS` `XBOX` `POWER` `PWR` | `BTN_MODE` |
+| `0x04000000` | G1 | `G1` | `BTN_TRIGGER_HAPPY7` |
+| `0x08000000` | G2 | `G2` | `BTN_TRIGGER_HAPPY8` |
+| `0x10000000` | G3 | `G3` | `BTN_TRIGGER_HAPPY9` |
+| `0x20000000` | G4 | `G4` | `BTN_TRIGGER_HAPPY10` |
+| `0x40000000` | G5 | `G5` | `BTN_TRIGGER_HAPPY11` |
+| `0x80000000` | Profile button | `PROFILE` | `BTN_TRIGGER_HAPPY12` |
 
 DPAD bits (0x01–0x08) are summed per-axis, so diagonal inputs set both axes
 simultaneously. All other bits are emitted as EV_KEY press/release events.
+
+All **Config alias** names are case-insensitive in `config.ini`. Raw evdev names
+(`BTN_SOUTH`, `BTN_TL`, etc.) are also accepted everywhere an alias works.
 
 ### Trigger Packet (`data[2] == 0x0a`)
 
@@ -716,15 +719,29 @@ All OUT reports are 64 bytes with OLH framing: `[0x02, endpoint, cmd..., 0x00×p
 | `0x01 0x0b 0x00 0x00` | Disable eco mode | RGB init step 3; enables LEDs |
 | `0x06 0x00 [len_lo] [len_hi] 0x00 0x00 [27 bytes]` | Write RGB frame | 27-byte planar buffer: R×9, G×9, B×9 |
 
-**Profile remapping codes** (use these as keys/values in `[profile.NAME]`):
+**Profile remapping codes** (use any of these as keys/values in `[profile.NAME]`):
 
-```
-BTN_SOUTH (A), BTN_EAST (B), BTN_NORTH (X), BTN_WEST (Y),
-BTN_TL (LB), BTN_TR (RB), BTN_SELECT (Back), BTN_START (Start),
-BTN_THUMBL (L3), BTN_THUMBR (R3), BTN_MODE (Guide/Home),
-BTN_TRIGGER_HAPPY1–4 (P1–P4 paddles), BTN_TRIGGER_HAPPY5–6 (S1–S2 SAX grips),
-BTN_TRIGGER_HAPPY7–11 (G1–G5), BTN_TRIGGER_HAPPY12 (Profile)
-```
+| Button | Primary alias | Additional aliases | Raw evdev code |
+|---|---|---|---|
+| Cross / A | `CROSS` | `A` | `BTN_SOUTH` |
+| Circle / B | `CIRCLE` | `B` | `BTN_EAST` |
+| Square / X | `SQUARE` | `X` | `BTN_NORTH` |
+| Triangle / Y | `TRIANGLE` | `Y` | `BTN_WEST` |
+| L1 | `L1` | `LB` | `BTN_TL` |
+| R1 | `R1` | `RB` | `BTN_TR` |
+| L3 | `L3` | `LS` | `BTN_THUMBL` |
+| R3 | `R3` | `RS` | `BTN_THUMBR` |
+| Select | `SELECT` | `BACK` `SHARE` | `BTN_SELECT` |
+| Start | `START` | `MENU` `OPTIONS` | `BTN_START` |
+| Home | `HOME` | `PS` `XBOX` `POWER` `PWR` | `BTN_MODE` |
+| Paddle 1 | `P1` | — | `BTN_TRIGGER_HAPPY1` |
+| Paddle 2 | `P2` | — | `BTN_TRIGGER_HAPPY2` |
+| Paddle 3 | `P3` | — | `BTN_TRIGGER_HAPPY3` |
+| Paddle 4 | `P4` | — | `BTN_TRIGGER_HAPPY4` |
+| SAX left grip | `S1` | — | `BTN_TRIGGER_HAPPY5` |
+| SAX right grip | `S2` | — | `BTN_TRIGGER_HAPPY6` |
+| G1–G5 | `G1`–`G5` | — | `BTN_TRIGGER_HAPPY7`–`11` |
+| Profile button | `PROFILE` | — | `BTN_TRIGGER_HAPPY12` |
 
 ---
 
