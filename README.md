@@ -6,7 +6,7 @@ A userspace driver that makes the SCUF Envision Pro V2 controller work correctly
 
 ## Features
 
-- **Button/axis remapping** — corrects the controller's non-standard evdev output to Xbox-compatible codes
+- **Button/axis remapping** — reads all input directly from HID raw packets and emits correct Xbox-compatible codes via uinput
 - **Named profiles** — per-game button remapping, switched live with no restart
 - **RGB control** — 12 animation modes (static, rainbow, breathe, colorpulse, etc.); activity-based state changes; per-profile overrides
 - **Rumble / force feedback** — full FF_RUMBLE + FF_GAIN passthrough to the controller's motors
@@ -38,6 +38,12 @@ Physical SCUF Controller (VID 1b1c, PID 3a05 wired / 3a08 wireless)
         |     Games & Steam see a normal Xbox controller
         |
         +--- HID raw interface (/dev/hidrawN)
+                    |
+                    +-- Button/DPAD packets (data[2]==0x02) -> virtual gamepad
+                    |
+                    +-- Trigger packets (data[2]==0x0a) -> virtual gamepad
+                    |
+                    +-- Analog stick packets (interface 3) -> virtual gamepad
                     |
                     +-- Battery polling (every 60s) -> desktop notifications
                     |
@@ -614,57 +620,111 @@ sudo python3 -m scuf_envision
 
 ---
 
-## Button Mapping Reference
+## HID Raw Protocol Reference
 
-### Buttons
+All controller input is read directly from `/dev/hidrawN` — the driver bypasses the
+kernel's HID→evdev translation entirely. Two hidraw nodes are used:
 
-| Physical Button | SCUF Sends (Wrong) | Driver Outputs (Correct) |
+- **Control hidraw** (interface 0) — buttons, DPAD, triggers, battery, RGB, keepalive
+- **Analog hidraw** (interface 3) — analog stick axes
+
+### Incoming Packet Identification
+
+All packets from the control interface are 64 bytes. The packet type is identified
+by `data[0]` and `data[2]`:
+
+| `data[0]` | `data[2]` | Packet type | Parser |
+|---|---|---|---|
+| `0x03` | `0x02` | Button + DPAD bitmask | `BatteryReader._parse_buttons()` |
+| `0x03` | `0x0a` | Trigger axes | `BatteryReader._parse_triggers()` |
+| `0x03` | `0x01` (+ `data[3]==0x0f`) | Wireless battery (unsolicited) | `BatteryReader._parse_battery()` |
+| any | `data[3]==0x0f` | Wired battery query response | `BatteryReader._parse_battery()` |
+| *(analog hidraw)* | — | Analog stick axes | `AnalogListener._read_loop()` |
+
+### Button + DPAD Packet (`data[2] == 0x02`)
+
+`data[3:7]` is a 32-bit little-endian bitmask. Each set bit maps to one button or
+DPAD direction emitted to the virtual Xbox gamepad.
+
+| Bitmask | Physical control | Virtual output code |
 |---|---|---|
-| A | BTN_SOUTH (0x130) | BTN_SOUTH (0x130) |
-| B | BTN_EAST (0x131) | BTN_EAST (0x131) |
-| X | BTN_C (0x132) | BTN_NORTH (0x133) |
-| Y | BTN_NORTH (0x133) | BTN_WEST (0x134) |
-| LB | BTN_WEST (0x134) | BTN_TL (0x136) |
-| RB | BTN_Z (0x135) | BTN_TR (0x137) |
-| Select / Back | BTN_TL (0x136) | BTN_SELECT (0x13a) |
-| Start / Menu | BTN_TR (0x137) | BTN_START (0x13b) |
-| L3 | BTN_TL2 (0x138) | BTN_THUMBL (0x13d) |
-| R3 | BTN_TR2 (0x139) | BTN_THUMBR (0x13e) |
-| Guide | BTN_MODE (0x13c) | BTN_MODE (0x13c) |
-| Paddle 1 | BTN_TRIGGER_HAPPY1 | BTN_TRIGGER_HAPPY1 |
-| Paddle 2 | BTN_TRIGGER_HAPPY2 | BTN_TRIGGER_HAPPY2 |
-| Paddle 3 | BTN_TRIGGER_HAPPY3 | BTN_TRIGGER_HAPPY3 |
+| `0x00000001` | D-Pad Up | `ABS_HAT0Y = -1` |
+| `0x00000002` | D-Pad Down | `ABS_HAT0Y = +1` |
+| `0x00000004` | D-Pad Left | `ABS_HAT0X = -1` |
+| `0x00000008` | D-Pad Right | `ABS_HAT0X = +1` |
+| `0x00000020` | A | `BTN_SOUTH` |
+| `0x00000040` | X | `BTN_NORTH` |
+| `0x00000080` | Y | `BTN_WEST` |
+| `0x00000100` | B | `BTN_EAST` |
+| `0x00000200` | LB | `BTN_TL` |
+| `0x00000400` | RB | `BTN_TR` |
+| `0x00002000` | L3 (left stick click) | `BTN_THUMBL` |
+| `0x00004000` | R3 (right stick click) | `BTN_THUMBR` |
+| `0x00010000` | Back / Select | `BTN_SELECT` |
+| `0x00020000` | Start / Menu | `BTN_START` |
+| `0x00040000` | P1 — rear paddle, bottom-left | `BTN_TRIGGER_HAPPY1` |
+| `0x00080000` | P2 — rear paddle, bottom-right | `BTN_TRIGGER_HAPPY2` |
+| `0x00100000` | P3 — rear paddle, top-left | `BTN_TRIGGER_HAPPY3` |
+| `0x00200000` | P4 — rear paddle, top-right | `BTN_TRIGGER_HAPPY4` |
+| `0x00400000` | S1 — SAX left grip | `BTN_TRIGGER_HAPPY5` |
+| `0x00800000` | S2 — SAX right grip | `BTN_TRIGGER_HAPPY6` |
+| `0x01000000` | Home / Xbox / Power | `BTN_MODE` |
+| `0x04000000` | G1 | `BTN_TRIGGER_HAPPY7` |
+| `0x08000000` | G2 | `BTN_TRIGGER_HAPPY8` |
+| `0x10000000` | G3 | `BTN_TRIGGER_HAPPY9` |
+| `0x20000000` | G4 | `BTN_TRIGGER_HAPPY10` |
+| `0x40000000` | G5 | `BTN_TRIGGER_HAPPY11` |
+| `0x80000000` | Profile button | `BTN_TRIGGER_HAPPY12` |
 
-**Physical codes for profile remapping** (what to use as keys in `[profile.NAME]`):
+DPAD bits (0x01–0x08) are summed per-axis, so diagonal inputs set both axes
+simultaneously. All other bits are emitted as EV_KEY press/release events.
 
-```
-BTN_SOUTH, BTN_EAST, BTN_C (X), BTN_NORTH (Y),
-BTN_WEST (LB), BTN_Z (RB), BTN_TL (Back), BTN_TR (Start),
-BTN_TL2 (L3), BTN_TR2 (R3), BTN_MODE (Guide),
-BTN_TRIGGER_HAPPY1/2/3 (Paddles)
-```
+### Trigger Packet (`data[2] == 0x0a`)
 
-**Virtual output codes** (what to use as values):
+| Bytes | Value | Virtual output | Range |
+|---|---|---|---|
+| `data[4:6]` | Left trigger (uint16 LE) | `ABS_Z` | 0 – 1023 |
+| `data[6:8]` | Right trigger (uint16 LE) | `ABS_RZ` | 0 – 1023 |
+
+### Analog Stick Packet (interface 3 hidraw)
+
+Packets are 64 bytes. Bytes 1–8 carry four signed 16-bit little-endian values:
+
+| Bytes | Axis | Virtual output | Range |
+|---|---|---|---|
+| `data[1:3]` | Left stick X | `ABS_X` | −32768 – 32767 |
+| `data[3:5]` | Left stick Y | `ABS_Y` | −32768 – 32767 |
+| `data[5:7]` | Right stick X | `ABS_RX` | −32768 – 32767 |
+| `data[7:9]` | Right stick Y | `ABS_RY` | −32768 – 32767 |
+
+### Outgoing Command Packets
+
+All OUT reports are 64 bytes with OLH framing: `[0x02, endpoint, cmd..., 0x00×pad]`.
+
+| Endpoint byte | Connection |
+|---|---|
+| `0x08` | Wired USB |
+| `0x09` | Wireless dongle |
+
+| Command bytes | Purpose | Notes |
+|---|---|---|
+| `0x01 0x03 0x00 0x02` | Software mode | Required before battery or RGB; sent once on open |
+| `0x02 0x0f` | Battery query | Response arrives as `data[0]==0x03, data[3]==0x0f`; value at `data[4:6]` ÷ 10 = % |
+| `0x12` | Keepalive / heartbeat | Sent every 20 s to prevent wireless timeout |
+| `0x0d 0x00 0x01` | Open LED endpoint | RGB init step 1 |
+| `0x01 0xc0 0x00 0x01` | Activate trigger backend | RGB init step 2 |
+| `0x01 0x0b 0x00 0x00` | Disable eco mode | RGB init step 3; enables LEDs |
+| `0x06 0x00 [len_lo] [len_hi] 0x00 0x00 [27 bytes]` | Write RGB frame | 27-byte planar buffer: R×9, G×9, B×9 |
+
+**Profile remapping codes** (use these as keys/values in `[profile.NAME]`):
 
 ```
 BTN_SOUTH (A), BTN_EAST (B), BTN_NORTH (X), BTN_WEST (Y),
 BTN_TL (LB), BTN_TR (RB), BTN_SELECT (Back), BTN_START (Start),
-BTN_THUMBL (L3), BTN_THUMBR (R3), BTN_MODE (Guide),
-BTN_TRIGGER_HAPPY1/2/3 (Paddles)
+BTN_THUMBL (L3), BTN_THUMBR (R3), BTN_MODE (Guide/Home),
+BTN_TRIGGER_HAPPY1–4 (P1–P4 paddles), BTN_TRIGGER_HAPPY5–6 (S1–S2 SAX grips),
+BTN_TRIGGER_HAPPY7–11 (G1–G5), BTN_TRIGGER_HAPPY12 (Profile)
 ```
-
-### Axes
-
-| Physical Input | SCUF Sends | Driver Outputs | Range |
-|---|---|---|---|
-| Left Stick X | ABS_X | ABS_X | -32768 to 32767 |
-| Left Stick Y | ABS_Y | ABS_Y | -32768 to 32767 |
-| Right Stick X | ABS_Z | ABS_RX | -32768 to 32767 |
-| Right Stick Y | ABS_RZ | ABS_RY | -32768 to 32767 |
-| Left Trigger | ABS_RX | ABS_Z | 0 to 1023 |
-| Right Trigger | ABS_RY | ABS_RZ | 0 to 1023 |
-| D-Pad X | ABS_HAT0X | ABS_HAT0X | -1 to 1 |
-| D-Pad Y | ABS_HAT0Y | ABS_HAT0Y | -1 to 1 |
 
 ---
 
