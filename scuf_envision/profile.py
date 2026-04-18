@@ -15,24 +15,38 @@ _BASE_MAP: dict[int, int] = {code: code for code in HID_BUTTON_MAP.values()}
 # Friendly aliases for the config file — users write P1/S1/G1/PROFILE instead of
 # BTN_TRIGGER_HAPPY* which are arbitrary kernel slot names with no inherent meaning.
 _ALIASES: dict[str, int] = {
-    # Face buttons
-    "A":       ecodes.BTN_SOUTH,
-    "B":       ecodes.BTN_EAST,
-    "X":       ecodes.BTN_NORTH,
-    "Y":       ecodes.BTN_WEST,
+    # Face buttons — PS names are primary; Xbox/generic names are aliases
+    "CROSS":    ecodes.BTN_SOUTH,
+    "A":        ecodes.BTN_SOUTH,
+    "CIRCLE":   ecodes.BTN_EAST,
+    "B":        ecodes.BTN_EAST,
+    "SQUARE":   ecodes.BTN_NORTH,
+    "X":        ecodes.BTN_NORTH,
+    "TRIANGLE": ecodes.BTN_WEST,
+    "Y":        ecodes.BTN_WEST,
     # Shoulder buttons
+    "L1":      ecodes.BTN_TL,
     "LB":      ecodes.BTN_TL,
+    "R1":      ecodes.BTN_TR,
     "RB":      ecodes.BTN_TR,
+    # Stick clicks
+    "L3":      ecodes.BTN_THUMBL,
+    "LS":      ecodes.BTN_THUMBL,
+    "R3":      ecodes.BTN_THUMBR,
+    "RS":      ecodes.BTN_THUMBR,
     # System buttons
     "SELECT":  ecodes.BTN_SELECT,
     "BACK":    ecodes.BTN_SELECT,
+    "SHARE":   ecodes.BTN_SELECT,
     "START":   ecodes.BTN_START,
     "MENU":    ecodes.BTN_START,
+    "OPTIONS": ecodes.BTN_START,
     "HOME":    ecodes.BTN_MODE,
     "GUIDE":   ecodes.BTN_MODE,
-    # Stick clicks
-    "L3":      ecodes.BTN_THUMBL,
-    "R3":      ecodes.BTN_THUMBR,
+    "PS":      ecodes.BTN_MODE,
+    "XBOX":    ecodes.BTN_MODE,
+    "POWER":   ecodes.BTN_MODE,
+    "PWR":     ecodes.BTN_MODE,
     # Rear paddles
     "P1":      ecodes.BTN_TRIGGER_HAPPY1,
     "P2":      ecodes.BTN_TRIGGER_HAPPY2,
@@ -63,8 +77,10 @@ class LayerConfig:
 def _resolve_code(name: str) -> int | None:
     """Resolve a button name to its evdev integer value.
 
-    Accepts friendly aliases (P1–P4, S1/S2, G1–G5, PROFILE) or any evdev
-    code name (BTN_SOUTH, BTN_TL, etc.).
+    Accepts friendly aliases (CROSS/A, CIRCLE/B, SQUARE/X, TRIANGLE/Y,
+    L1/LB, R1/RB, L3/LS, R3/RS, SELECT/BACK/SHARE, START/MENU/OPTIONS,
+    HOME/PS/XBOX/POWER/PWR, P1–P4, S1/S2, G1–G5, PROFILE) or any raw
+    evdev code name (BTN_SOUTH, BTN_TL, etc.).
     """
     upper = name.upper().strip()
     if upper in _ALIASES:
