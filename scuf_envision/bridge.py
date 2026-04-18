@@ -230,6 +230,13 @@ class BridgeService:
                         if self._running:
                             log.error("Device read error: %s", e)
                             raise _DeviceDisconnected() from e
+                elif ready_fd in secondary_fd_map:
+                    try:
+                        secondary_fd_map[ready_fd].read()  # drain; secondary devices emit no buttons
+                    except OSError as e:
+                        if self._running:
+                            log.error("Secondary device read error: %s", e)
+                            raise _DeviceDisconnected() from e
                 elif ready_fd == vgpad_fd:
                     self._handle_ff_events()
                 elif ready_fd == ipc_fd:
@@ -243,7 +250,37 @@ class BridgeService:
                     )
 
     def _handle_event(self, event):
-        pass  # evdev grabbed for exclusive access; all input processed via HID raw
+        if event.type != ecodes.EV_SYN:
+            self._last_input_time = time.monotonic()
+        if event.type == ecodes.EV_KEY:
+            self._handle_button(event)
+        elif event.type == ecodes.EV_ABS:
+            self._handle_axis(event)
+        elif event.type == ecodes.EV_SYN:
+            self.gamepad.syn()
+
+    def _handle_button(self, event):
+        self._dispatch_button(event.code, event.value)
+
+    def _dispatch_button(self, code: int, value: int):
+        """Remap and forward a button event via the active profile's button map."""
+        sw_btn = self._profile.switch_button
+        if sw_btn is not None and code == sw_btn:
+            if value == 1:
+                layer = self._profile.cycle_layer()
+                if layer is not None:
+                    self._on_layer_switch(layer)
+            return  # consume key-down and key-up; never emit to virtual gamepad
+        mapped = self._profile.effective_button_map.get(code)
+        if mapped is not None:
+            self.gamepad.emit_button(mapped, value)
+        elif value == 1:
+            log.debug("Unknown button: code=0x%03x (%d)", code, code)
+
+    def _handle_axis(self, event):
+        from .constants import AXIS_MAP
+        code = event.code
+        value = event.value
 
     def _on_hid_button(self, code: int, value: int) -> None:
         self._last_input_time = time.monotonic()

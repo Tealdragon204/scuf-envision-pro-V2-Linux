@@ -54,18 +54,29 @@ HID_BUTTON_MAP: dict[int, int] = {
     0x80000000: ecodes.BTN_TRIGGER_HAPPY12, # Profile button
 }
 
-# DPAD: (bitmask, HAT axis code, direction value).
-# HAT0X: -1=Left, 0=Centre, +1=Right
-# HAT0Y: -1=Up,   0=Centre, +1=Down
-HID_DPAD: tuple[tuple[int, int, int], ...] = (
-    (0x000002, ecodes.ABS_HAT0Y, -1),  # Up
-    (0x000004, ecodes.ABS_HAT0Y, +1),  # Down
-    (0x000008, ecodes.ABS_HAT0X, -1),  # Left
-    (0x000010, ecodes.ABS_HAT0X, +1),  # Right
-)
+# Paddle buttons — V2 has 4 physical paddles. Currently firmware-bound to face
+# button HID usages; these entries are placeholders for post-firmware-reprogram codes.
+PADDLE_MAP = {
+    ecodes.BTN_TRIGGER_HAPPY1: ecodes.BTN_TRIGGER_HAPPY1,  # Paddle 1 (bottom-left)
+    ecodes.BTN_TRIGGER_HAPPY2: ecodes.BTN_TRIGGER_HAPPY2,  # Paddle 2 (bottom-right)
+    ecodes.BTN_TRIGGER_HAPPY3: ecodes.BTN_TRIGGER_HAPPY3,  # Paddle 3 (top-left)
+    ecodes.BTN_TRIGGER_HAPPY4: ecodes.BTN_TRIGGER_HAPPY4,  # Paddle 4 (top-right)
+}
 
-# Sorted button code list for uinput capability declaration.
-VIRTUAL_BUTTONS: list[int] = sorted(HID_BUTTON_MAP.values())
+# --- Axis mapping ---
+# The SCUF also sends axes on wrong codes.
+# Map: physical_axis_code -> standard Xbox axis code
+
+AXIS_MAP = {
+    ecodes.ABS_X:      ecodes.ABS_X,      # Left Stick X (correct)
+    ecodes.ABS_Y:      ecodes.ABS_Y,      # Left Stick Y (correct)
+    ecodes.ABS_Z:      ecodes.ABS_RX,     # SCUF sends ABS_Z for Right Stick X
+    ecodes.ABS_RX:     ecodes.ABS_Z,      # SCUF sends ABS_RX for Left Trigger
+    ecodes.ABS_RY:     ecodes.ABS_RZ,     # SCUF sends ABS_RY for Right Trigger
+    ecodes.ABS_RZ:     ecodes.ABS_RY,     # SCUF sends ABS_RZ for Right Stick Y
+    ecodes.ABS_HAT0X:  ecodes.ABS_HAT0X,  # D-pad X (correct)
+    ecodes.ABS_HAT0Y:  ecodes.ABS_HAT0Y,  # D-pad Y (correct)
+}
 
 # --- Axis ranges ---
 STICK_MIN = -32768
