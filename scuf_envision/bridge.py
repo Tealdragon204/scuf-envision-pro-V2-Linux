@@ -53,6 +53,7 @@ class BridgeService:
         self._ff_gain = 65535
 
         self._battery = None
+        self._analog = None
         self._rgb = None
         self._rgb_animator = None
         self._last_input_time: float = 0.0
@@ -100,6 +101,16 @@ class BridgeService:
                 except OSError as e:
                     log.warning("Battery reader unavailable: %s", e)
                     self._battery = None
+
+            if self.discovered.hidraw_path:
+                from .hid import AnalogListener
+                self._analog = AnalogListener(self.discovered.hidraw_path,
+                                              self._on_hid_axis, self.gamepad.syn)
+                try:
+                    self._analog.start()
+                except OSError as e:
+                    log.warning("Analog listener unavailable: %s", e)
+                    self._analog = None
 
             if self.discovered.control_hidraw_path:
                 from .hid import RGBController
@@ -232,11 +243,7 @@ class BridgeService:
                     )
 
     def _handle_event(self, event):
-        if event.type == ecodes.EV_ABS:
-            self._last_input_time = time.monotonic()
-            self._handle_axis(event)
-        elif event.type == ecodes.EV_SYN:
-            self.gamepad.syn()
+        pass  # evdev grabbed for exclusive access; all input processed via HID raw
 
     def _on_hid_button(self, code: int, value: int) -> None:
         self._last_input_time = time.monotonic()
@@ -244,7 +251,35 @@ class BridgeService:
 
     def _on_hid_axis(self, code: int, value: int) -> None:
         self._last_input_time = time.monotonic()
-        self.gamepad.emit_axis(code, value)
+        if code == ecodes.ABS_X:
+            self._raw_left_x = value
+            self._emit_filtered_stick("left", self._raw_left_x, self._raw_left_y,
+                                      ecodes.ABS_X, ecodes.ABS_Y)
+        elif code == ecodes.ABS_Y:
+            self._raw_left_y = value
+            self._emit_filtered_stick("left", self._raw_left_x, self._raw_left_y,
+                                      ecodes.ABS_X, ecodes.ABS_Y)
+        elif code == ecodes.ABS_RX:
+            self._raw_right_x = value
+            self._emit_filtered_stick("right", self._raw_right_x, self._raw_right_y,
+                                      ecodes.ABS_RX, ecodes.ABS_RY)
+        elif code == ecodes.ABS_RY:
+            self._raw_right_y = value
+            self._emit_filtered_stick("right", self._raw_right_x, self._raw_right_y,
+                                      ecodes.ABS_RX, ecodes.ABS_RY)
+        elif code == ecodes.ABS_Z:
+            filtered = self.filter.filter_trigger(value, side='left')
+            filtered, changed = self.filter.suppress_jitter("lt", filtered)
+            if changed:
+                self.gamepad.emit_axis(ecodes.ABS_Z, filtered)
+        elif code == ecodes.ABS_RZ:
+            filtered = self.filter.filter_trigger(value, side='right')
+            filtered, changed = self.filter.suppress_jitter("rt", filtered)
+            if changed:
+                self.gamepad.emit_axis(ecodes.ABS_RZ, filtered)
+        else:
+            # HAT0X/HAT0Y from HID DPAD bitmask — emit raw (integers, no filtering needed)
+            self.gamepad.emit_axis(code, value)
 
     def _dispatch_button(self, code: int, value: int):
         """Remap and forward a button event via the active profile's button map."""
@@ -260,49 +295,6 @@ class BridgeService:
             self.gamepad.emit_button(mapped, value)
         elif value == 1:
             log.debug("Unknown button: code=0x%03x (%d)", code, code)
-
-    def _handle_axis(self, event):
-        from .constants import AXIS_MAP
-        code = event.code
-        value = event.value
-
-        if code in (ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
-            return  # DPAD handled via HID bitmask
-        if code not in AXIS_MAP:
-            return
-
-        if code == ecodes.ABS_X:
-            self._raw_left_x = value
-            self._emit_filtered_stick("left", self._raw_left_x, self._raw_left_y,
-                                      ecodes.ABS_X, ecodes.ABS_Y)
-        elif code == ecodes.ABS_Y:
-            self._raw_left_y = value
-            self._emit_filtered_stick("left", self._raw_left_x, self._raw_left_y,
-                                      ecodes.ABS_X, ecodes.ABS_Y)
-        elif code == ecodes.ABS_Z:
-            # SCUF ABS_Z -> Right Stick X
-            self._raw_right_x = value
-            self._emit_filtered_stick("right", self._raw_right_x, self._raw_right_y,
-                                      ecodes.ABS_RX, ecodes.ABS_RY)
-        elif code == ecodes.ABS_RZ:
-            # SCUF ABS_RZ -> Right Stick Y
-            self._raw_right_y = value
-            self._emit_filtered_stick("right", self._raw_right_x, self._raw_right_y,
-                                      ecodes.ABS_RX, ecodes.ABS_RY)
-        elif code == ecodes.ABS_RX:
-            # SCUF ABS_RX -> Left Trigger
-            filtered = self.filter.filter_trigger(value, side='left')
-            filtered, changed = self.filter.suppress_jitter("lt", filtered)
-            if changed:
-                self.gamepad.emit_axis(ecodes.ABS_Z, filtered)
-        elif code == ecodes.ABS_RY:
-            # SCUF ABS_RY -> Right Trigger
-            filtered = self.filter.filter_trigger(value, side='right')
-            filtered, changed = self.filter.suppress_jitter("rt", filtered)
-            if changed:
-                self.gamepad.emit_axis(ecodes.ABS_RZ, filtered)
-        else:
-            self.gamepad.emit_axis(AXIS_MAP[code], value)
 
     def _handle_ff_events(self):
         ui = self.gamepad.uinput
@@ -520,6 +512,18 @@ class BridgeService:
                     except OSError as e:
                         log.warning("Battery reader unavailable after reconnect: %s", e)
                         self._battery = None
+                if self._analog:
+                    self._analog.close()
+                    self._analog = None
+                if discovered.hidraw_path:
+                    from .hid import AnalogListener
+                    self._analog = AnalogListener(discovered.hidraw_path,
+                                                  self._on_hid_axis, self.gamepad.syn)
+                    try:
+                        self._analog.start()
+                    except OSError as e:
+                        log.warning("Analog listener unavailable after reconnect: %s", e)
+                        self._analog = None
                 self._stop_rgb()
                 if discovered.control_hidraw_path:
                     from .hid import RGBController
@@ -550,6 +554,9 @@ class BridgeService:
         if self._battery:
             self._battery.close()
             self._battery = None
+        if self._analog:
+            self._analog.close()
+            self._analog = None
         self._stop_rgb()
         self._release_physical()
         self.gamepad.close()

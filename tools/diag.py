@@ -21,18 +21,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import evdev
 from evdev import ecodes, categorize
 from scuf_envision.discovery import discover_scuf, discover_scuf_with_retry, _get_vid_pid, _has_joystick_handler, _event_number
-from scuf_envision.constants import HID_BUTTON_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER, VIRTUAL_DEVICE_NAME
+from scuf_envision.constants import HID_BUTTON_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER, VIRTUAL_DEVICE_NAME
 
 # ANSI color codes
 RED = "\033[91m"
 RESET = "\033[0m"
 
-RAW_WRONG_BUTTONS: set = set()  # all digital buttons now read from HID raw, not evdev
-RAW_WRONG_AXES = {src for src, dst in AXIS_MAP.items() if src != dst}
+# All digital buttons and axes come from HID raw — evdev is grabbed/suppressed only
+RAW_WRONG_BUTTONS: set = set()
+RAW_WRONG_AXES: set = set()
 
-# Human-readable names for evdev axis codes the SCUF exposes (buttons come from HID raw)
-SCUF_BUTTON_NAMES: dict = {}  # paddles/SAX/G-keys not visible in evdev — read via HID
-
+# Buttons the SCUF exposes via evdev (limited set; driver reads all buttons via HID raw)
 SCUF_BUTTON_NAMES = {
     ecodes.BTN_SOUTH:  "A",
     ecodes.BTN_EAST:   "B",
@@ -46,18 +45,19 @@ SCUF_BUTTON_NAMES = {
     ecodes.BTN_THUMBR: "R3",
     ecodes.BTN_MODE:   "Home/Xbox",
     # NOTE: paddles (P1-P4), SAX (S1/S2), G-keys (G1-G5), Profile button
-    # are NOT visible in evdev — they are read from HID raw by the driver.
+    # are NOT visible in evdev — read from HID raw by the driver.
 }
 
+# Axes the SCUF exposes via evdev (scrambled codes; driver reads all axes via HID raw)
 SCUF_AXIS_NAMES = {
-    ecodes.ABS_X:      "Left Stick X (correct)",
-    ecodes.ABS_Y:      "Left Stick Y (correct)",
-    ecodes.ABS_Z:      "Right Stick X (ABS_Z -> should be ABS_RX)",
-    ecodes.ABS_RX:     "Left Trigger (ABS_RX -> should be ABS_Z)",
-    ecodes.ABS_RY:     "Right Trigger (ABS_RY -> should be ABS_RZ)",
-    ecodes.ABS_RZ:     "Right Stick Y (ABS_RZ -> should be ABS_RY)",
-    ecodes.ABS_HAT0X:  "D-pad X (correct)",
-    ecodes.ABS_HAT0Y:  "D-pad Y (correct)",
+    ecodes.ABS_X:      "Left Stick X",
+    ecodes.ABS_Y:      "Left Stick Y",
+    ecodes.ABS_Z:      "Right Stick X (scrambled — driver reads via HID raw)",
+    ecodes.ABS_RX:     "Left Trigger (scrambled — driver reads via HID raw)",
+    ecodes.ABS_RY:     "Right Trigger (scrambled — driver reads via HID raw)",
+    ecodes.ABS_RZ:     "Right Stick Y (scrambled — driver reads via HID raw)",
+    ecodes.ABS_HAT0X:  "D-pad X (driver reads via HID bitmask)",
+    ecodes.ABS_HAT0Y:  "D-pad Y (driver reads via HID bitmask)",
     ecodes.ABS_MISC:   "ABS_MISC (not a gamepad axis)",
 }
 

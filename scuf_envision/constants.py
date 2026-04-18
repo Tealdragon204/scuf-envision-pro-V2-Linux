@@ -1,13 +1,16 @@
 """
 Hardware constants and input mapping tables for the SCUF Envision Pro V2.
 
-All digital buttons are read directly from raw HID reports (32-bit bitmask
-packet), bypassing the kernel HID→evdev translation layer. This gives lower
-latency and captures buttons (paddles, SAX, G-keys) that never appear in evdev.
+All input is read from raw HID interfaces, bypassing the kernel HID→evdev
+translation layer entirely:
+  - Digital buttons + DPAD: 32-bit bitmask packets (data[2]==0x02) on the
+    control HID interface — same path as battery and RGB commands.
+  - Analog sticks: int16 LE pairs on USB interface 3 (the dedicated analog
+    endpoint), matching OLH's analogDataListener.
+  - Triggers: uint16 LE pairs in trigger packets (data[2]==0x0a) on the
+    control HID interface.
 
-Analog axes (sticks, triggers) remain on evdev — that path works correctly.
-
-Source for HID bitmask layout: OpenLinkHub (Go) scufenvisionproV2W.go
+Source for HID packet layout: OpenLinkHub (Go) scufenvisionproV2W.go
 """
 
 import evdev
@@ -63,18 +66,6 @@ HID_DPAD: tuple[tuple[int, int, int], ...] = (
 
 # Sorted button code list for uinput capability declaration.
 VIRTUAL_BUTTONS: list[int] = sorted(HID_BUTTON_MAP.values())
-
-# --- Axis mapping ---
-# SCUF sends analog axes on non-standard evdev codes; remap to Xbox layout.
-# HAT0X/HAT0Y are intentionally excluded — DPAD is handled via HID_DPAD above.
-AXIS_MAP = {
-    ecodes.ABS_X:  ecodes.ABS_X,    # Left Stick X (correct)
-    ecodes.ABS_Y:  ecodes.ABS_Y,    # Left Stick Y (correct)
-    ecodes.ABS_Z:  ecodes.ABS_RX,   # SCUF: ABS_Z → Right Stick X
-    ecodes.ABS_RX: ecodes.ABS_Z,    # SCUF: ABS_RX → Left Trigger
-    ecodes.ABS_RY: ecodes.ABS_RZ,   # SCUF: ABS_RY → Right Trigger
-    ecodes.ABS_RZ: ecodes.ABS_RY,   # SCUF: ABS_RZ → Right Stick Y
-}
 
 # --- Axis ranges ---
 STICK_MIN = -32768
