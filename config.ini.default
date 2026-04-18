@@ -281,3 +281,48 @@ poll_timeout_ms = 2
 # The switch_button is always consumed (never sent to the game). Each press
 # advances to the next layer; wraps back to the first after the last.
 # A notify-send fires on every switch showing the new layer name.
+
+# ---------------------------------------------------------------------------
+# FORMAT reference profile — every button mapped to itself (no-op)
+# Shows the full set of names you can use on either side of a remap.
+# Switch to it with: scuf-ctl profile FORMAT
+# ---------------------------------------------------------------------------
+[profile.FORMAT]
+# Standard face buttons
+BTN_SOUTH  = BTN_SOUTH    # A
+BTN_EAST   = BTN_EAST     # B
+BTN_NORTH  = BTN_NORTH    # X
+BTN_WEST   = BTN_WEST     # Y
+
+# Shoulder buttons
+BTN_TL     = BTN_TL       # LB
+BTN_TR     = BTN_TR       # RB
+
+# System buttons
+BTN_SELECT = BTN_SELECT   # Back / Select
+BTN_START  = BTN_START    # Start / Menu
+BTN_MODE   = BTN_MODE     # Home / Guide / Xbox
+
+# Stick clicks
+BTN_THUMBL = BTN_THUMBL   # L3
+BTN_THUMBR = BTN_THUMBR   # R3
+
+# Rear paddles
+P1 = P1                   # rear, bottom-left
+P2 = P2                   # rear, bottom-right
+P3 = P3                   # rear, top-left
+P4 = P4                   # rear, top-right
+
+# SAX grip bumpers
+S1 = S1                   # left grip
+S2 = S2                   # right grip
+
+# G-keys
+G1 = G1
+G2 = G2
+G3 = G3
+G4 = G4
+G5 = G5
+
+# Profile button
+PROFILE = PROFILE
