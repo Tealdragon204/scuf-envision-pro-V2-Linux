@@ -20,8 +20,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import evdev
 from evdev import ecodes, categorize
+import select
+import struct
+
 from scuf_envision.discovery import discover_scuf, discover_scuf_with_retry, _get_vid_pid, _has_joystick_handler, _event_number
-from scuf_envision.constants import HID_BUTTON_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER, VIRTUAL_DEVICE_NAME
+from scuf_envision.constants import (HID_BUTTON_MAP, HID_DPAD, HID_BTN_MASK_OFFSET,
+                                     SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED,
+                                     SCUF_PRODUCT_ID_RECEIVER, VIRTUAL_DEVICE_NAME)
 
 # ANSI color codes
 RED = "\033[91m"
@@ -358,6 +363,157 @@ def run_deadzone_mode(profile_name=None):
             dev.close()
 
 
+# Human-readable name for each HID button bitmask bit.
+_HID_BTN_NAMES: dict[int, str] = {
+    0x00000020: "Cross / A",
+    0x00000040: "Square / X",
+    0x00000080: "Triangle / Y",
+    0x00000100: "Circle / B",
+    0x00000200: "L1 / LB",
+    0x00000400: "R1 / RB",
+    0x00002000: "L3 / LS",
+    0x00004000: "R3 / RS",
+    0x00010000: "Select / Back / Share",
+    0x00020000: "Start / Menu / Options",
+    0x00040000: "P1 (paddle bottom-left)",
+    0x00080000: "P2 (paddle bottom-right)",
+    0x00100000: "P3 (paddle top-left)",
+    0x00200000: "P4 (paddle top-right)",
+    0x00400000: "S1 (SAX left grip)",
+    0x00800000: "S2 (SAX right grip)",
+    0x01000000: "Home / PS / Xbox",
+    0x04000000: "G1",
+    0x08000000: "G2",
+    0x10000000: "G3",
+    0x20000000: "G4",
+    0x40000000: "G5",
+    0x80000000: "Profile",
+}
+
+_DPAD_NAMES = {
+    (ecodes.ABS_HAT0Y, -1): "D-Pad Up",
+    (ecodes.ABS_HAT0Y,  1): "D-Pad Down",
+    (ecodes.ABS_HAT0X, -1): "D-Pad Left",
+    (ecodes.ABS_HAT0X,  1): "D-Pad Right",
+}
+
+_HID_STICK_NAMES = {
+    ecodes.ABS_X:  "Left  X",
+    ecodes.ABS_Y:  "Left  Y",
+    ecodes.ABS_RX: "Right X",
+    ecodes.ABS_RY: "Right Y",
+}
+
+
+def run_hidraw_mode(discovered, show_sticks: bool = False):
+    """Read directly from HID raw interfaces and print all button/trigger/stick events.
+
+    Uses the same packet parsing as the driver so paddles, SAX grips, G-keys,
+    triggers, and the profile button all appear here.
+    """
+    ctrl_path = discovered.control_hidraw_path
+    analog_path = discovered.hidraw_path
+
+    if not ctrl_path:
+        print("ERROR: No control hidraw device found.")
+        print("       Try running as root: sudo python3 tools/diag.py")
+        return
+
+    print("=" * 60)
+    print("Mode: HID RAW (direct packet monitor)")
+    print(f"  Control hidraw: {ctrl_path}")
+    if analog_path:
+        print(f"  Analog hidraw:  {analog_path}"
+              + (" (showing sticks)" if show_sticks else " (sticks hidden — use --sticks)"))
+    print()
+    print("Press buttons to see events. Press Ctrl+C to exit.")
+    print("=" * 60)
+    print()
+
+    _REPORT_SIZE = 64
+    _CMD_SOFTWARE_MODE = bytes([0x01, 0x03, 0x00, 0x02])
+    endpoint = 0x08  # wired; 0x09 for wireless — both work for reading
+
+    ctrl_fd = os.open(ctrl_path, os.O_RDWR)
+    # Software mode required before the controller sends button reports
+    buf = bytearray(64)
+    buf[0] = 0x02
+    buf[1] = endpoint
+    buf[2:2 + len(_CMD_SOFTWARE_MODE)] = _CMD_SOFTWARE_MODE
+    os.write(ctrl_fd, bytes(buf))
+
+    analog_fd = os.open(analog_path, os.O_RDONLY) if analog_path else None
+
+    fds = [ctrl_fd] + ([analog_fd] if analog_fd else [])
+    prev_mask = 0
+    prev_dpad = {ecodes.ABS_HAT0X: 0, ecodes.ABS_HAT0Y: 0}
+
+    try:
+        while True:
+            r, _, _ = select.select(fds, [], [], 0.5)
+            for fd in r:
+                try:
+                    data = os.read(fd, _REPORT_SIZE)
+                except OSError:
+                    return
+
+                if len(data) < 3:
+                    continue
+
+                # Button bitmask packet
+                if fd == ctrl_fd and data[0] == 0x03 and data[2] == 0x02:
+                    if len(data) < HID_BTN_MASK_OFFSET + 4:
+                        continue
+                    mask = int.from_bytes(
+                        data[HID_BTN_MASK_OFFSET:HID_BTN_MASK_OFFSET + 4], 'little')
+                    changed = mask ^ prev_mask
+                    for bit, name in _HID_BTN_NAMES.items():
+                        if changed & bit:
+                            state = "PRESSED " if mask & bit else "RELEASED"
+                            print(f"BUTTON: {name:<35s}  {state}")
+                    # DPAD
+                    hat_x = sum(d for bit, ax, d in HID_DPAD
+                                if ax == ecodes.ABS_HAT0X and (mask & bit))
+                    hat_y = sum(d for bit, ax, d in HID_DPAD
+                                if ax == ecodes.ABS_HAT0Y and (mask & bit))
+                    for axis, val in ((ecodes.ABS_HAT0X, hat_x), (ecodes.ABS_HAT0Y, hat_y)):
+                        if val != prev_dpad[axis]:
+                            if val != 0:
+                                dname = _DPAD_NAMES.get((axis, val), f"D-Pad axis={val}")
+                                print(f"BUTTON: {dname:<35s}  PRESSED ")
+                            else:
+                                # figure out which direction was just released
+                                old = prev_dpad[axis]
+                                dname = _DPAD_NAMES.get((axis, old), f"D-Pad axis={old}")
+                                print(f"BUTTON: {dname:<35s}  RELEASED")
+                            prev_dpad[axis] = val
+                    prev_mask = mask
+
+                # Trigger packet
+                elif fd == ctrl_fd and data[0] == 0x03 and data[2] == 0x0a:
+                    if len(data) < 8:
+                        continue
+                    left  = int.from_bytes(data[4:6], 'little')
+                    right = int.from_bytes(data[6:8], 'little')
+                    print(f"AXIS:   L2 / Left Trigger               {left:>6}  (0–1023)")
+                    print(f"AXIS:   R2 / Right Trigger              {right:>6}  (0–1023)")
+
+                # Analog stick packet (interface 3)
+                elif fd == analog_fd and show_sticks and len(data) >= 9:
+                    lx = int.from_bytes(data[1:3], 'little', signed=True)
+                    ly = int.from_bytes(data[3:5], 'little', signed=True)
+                    rx = int.from_bytes(data[5:7], 'little', signed=True)
+                    ry = int.from_bytes(data[7:9], 'little', signed=True)
+                    print(f"STICK:  L({lx:>7}, {ly:>7})  R({rx:>7}, {ry:>7})")
+
+    except KeyboardInterrupt:
+        print("\nDone.")
+    finally:
+        os.close(ctrl_fd)
+        if analog_fd is not None:
+            os.close(analog_fd)
+
+
 def main():
     from scuf_envision import __version__
 
@@ -369,6 +525,12 @@ def main():
                         help="Show deadzone config and live filtered axis output")
     parser.add_argument("--profile", metavar="NAME", default=None,
                         help="Profile name to load config from (used with --deadzone)")
+    parser.add_argument("--hidraw", action="store_true",
+                        help="Read directly from HID raw (shows paddles, SAX, G-keys, triggers)")
+    parser.add_argument("--evdev", action="store_true",
+                        help="Force evdev raw mode (legacy; paddles/SAX not visible)")
+    parser.add_argument("--sticks", action="store_true",
+                        help="Show analog stick values in --hidraw mode (noisy)")
     args = parser.parse_args()
 
     if args.deadzone:
@@ -448,7 +610,6 @@ def main():
         print("NOTE: The SCUF bridge driver is currently running.")
         print(f"  Virtual device: {virtual_dev.path} ({virtual_dev.name})")
         print()
-        # Show active profile from IPC if available
         try:
             import subprocess, json
             raw = subprocess.check_output(["scuf-ctl", "status"], timeout=2)
@@ -460,11 +621,26 @@ def main():
             print()
         except Exception:
             pass
-        print("The bridge has exclusive access to the physical controller,")
-        print("so raw events will not appear here. Switching to virtual")
-        print("device mode to show the bridge's remapped output instead.")
+        print("The bridge has exclusive access to the physical controller.")
+        if args.hidraw:
+            print("Switching to HID raw mode as requested (--hidraw).")
+        else:
+            print("Switching to virtual device mode to show the bridge's remapped output.")
         print("!" * 60)
         print()
+
+    # Route to HID raw mode:
+    #   - explicitly requested (--hidraw), OR
+    #   - bridge is not running AND --evdev not forced
+    use_hidraw = args.hidraw or (not virtual_dev and not args.evdev)
+
+    if use_hidraw:
+        dev.close()
+        run_hidraw_mode(discovered, show_sticks=args.sticks)
+        return
+
+    # Virtual or forced-evdev path
+    if virtual_dev:
         dev.close()
         dev = virtual_dev
         button_names = VIRTUAL_BUTTON_NAMES
@@ -473,17 +649,11 @@ def main():
     else:
         button_names = SCUF_BUTTON_NAMES
         axis_names = SCUF_AXIS_NAMES
-        mode_label = "RAW (physical device)"
-
-    is_raw_mode = virtual_dev is None
+        mode_label = "RAW evdev (paddles/SAX/G-keys NOT visible here)"
 
     print("=" * 60)
     print(f"Mode: {mode_label}")
     print("Press buttons and move sticks to see events.")
-    if is_raw_mode:
-        print("NOTE: Paddles, SAX, G-keys, and Profile button are read from HID raw")
-        print("by the driver and will NOT appear here (evdev does not expose them).")
-        print(f"{RED}[ERROR]{RESET} markers indicate axis codes remapped by the driver.")
     print("Press Ctrl+C to exit.")
     print("=" * 60)
     print()
@@ -492,25 +662,15 @@ def main():
         for event in dev.read_loop():
             if event.type == ecodes.EV_SYN:
                 continue
-
             if event.type == ecodes.EV_KEY:
                 name = button_names.get(event.code, f"UNKNOWN (0x{event.code:03x})")
                 state = "PRESSED" if event.value == 1 else "RELEASED" if event.value == 0 else f"value={event.value}"
-                if is_raw_mode and event.code in RAW_WRONG_BUTTONS:
-                    print(f"{RED}[ERROR] BUTTON: {name:45s} {state}{RESET}")
-                else:
-                    print(f"BUTTON: {name:45s} {state}")
-
+                print(f"BUTTON: {name:45s} {state}")
             elif event.type == ecodes.EV_ABS:
                 name = axis_names.get(event.code, f"UNKNOWN (0x{event.code:02x})")
-                if is_raw_mode and event.code in RAW_WRONG_AXES:
-                    print(f"{RED}[ERROR] AXIS:   {name:45s} value={event.value}{RESET}")
-                else:
-                    print(f"AXIS:   {name:45s} value={event.value}")
-
+                print(f"AXIS:   {name:45s} value={event.value}")
             else:
                 print(f"OTHER:  type={event.type} code={event.code} value={event.value}")
-
     except KeyboardInterrupt:
         print("\nDone.")
     finally:
