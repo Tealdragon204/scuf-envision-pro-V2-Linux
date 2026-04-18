@@ -62,7 +62,6 @@ class BridgeService:
         self._sleep_after: float = 300.0
         self._physical = None
         self._grabbed_devices = []
-        self._secondary_devices: list = []
         self._running = False
         self._profile: ProfileManager | None = None
         self._ipc: IPCServer | None = ipc_server
@@ -96,6 +95,8 @@ class BridgeService:
                                               notify_thresholds=thresholds)
                 try:
                     self._battery.start()
+                    self._battery.set_input_callbacks(
+                        self._on_hid_button, self._on_hid_axis, self.gamepad.syn)
                 except OSError as e:
                     log.warning("Battery reader unavailable: %s", e)
                     self._battery = None
@@ -169,8 +170,7 @@ class BridgeService:
                 sec_dev = evdev.InputDevice(sec_path)
                 sec_dev.grab()
                 self._grabbed_devices.append(sec_dev)
-                self._secondary_devices.append(sec_dev)
-                log.debug("Grabbed secondary: %s (%s)", sec_path, sec_dev.name)
+                log.debug("Grabbed secondary (suppressed): %s (%s)", sec_path, sec_dev.name)
             except (OSError, PermissionError) as e:
                 log.warning("Could not grab secondary device %s: %s", sec_path, e)
 
@@ -196,10 +196,6 @@ class BridgeService:
         poll.register(phys_fd, select.POLLIN)
         timeout = _poll_timeout_ms()
 
-        secondary_fd_map = {dev.fd: dev for dev in self._secondary_devices}
-        for fd in secondary_fd_map:
-            poll.register(fd, select.POLLIN)
-
         vgpad_fd = self.gamepad.fd if self._rumble else -1
         if vgpad_fd >= 0:
             poll.register(vgpad_fd, select.POLLIN)
@@ -223,14 +219,6 @@ class BridgeService:
                         if self._running:
                             log.error("Device read error: %s", e)
                             raise _DeviceDisconnected() from e
-                elif ready_fd in secondary_fd_map:
-                    try:
-                        for event in secondary_fd_map[ready_fd].read():
-                            self._handle_secondary_event(event)
-                    except OSError as e:
-                        if self._running:
-                            log.error("Secondary device read error: %s", e)
-                            raise _DeviceDisconnected() from e
                 elif ready_fd == vgpad_fd:
                     self._handle_ff_events()
                 elif ready_fd == ipc_fd:
@@ -244,17 +232,19 @@ class BridgeService:
                     )
 
     def _handle_event(self, event):
-        if event.type != ecodes.EV_SYN:
+        if event.type == ecodes.EV_ABS:
             self._last_input_time = time.monotonic()
-        if event.type == ecodes.EV_KEY:
-            self._handle_button(event)
-        elif event.type == ecodes.EV_ABS:
             self._handle_axis(event)
         elif event.type == ecodes.EV_SYN:
             self.gamepad.syn()
 
-    def _handle_button(self, event):
-        self._dispatch_button(event.code, event.value)
+    def _on_hid_button(self, code: int, value: int) -> None:
+        self._last_input_time = time.monotonic()
+        self._dispatch_button(code, value)
+
+    def _on_hid_axis(self, code: int, value: int) -> None:
+        self._last_input_time = time.monotonic()
+        self.gamepad.emit_axis(code, value)
 
     def _dispatch_button(self, code: int, value: int):
         """Remap and forward a button event via the active profile's button map."""
@@ -271,24 +261,13 @@ class BridgeService:
         elif value == 1:
             log.debug("Unknown button: code=0x%03x (%d)", code, code)
 
-    def _handle_secondary_event(self, event):
-        """Pre-remap secondary device events (paddles as face codes → TRIGGER_HAPPY)."""
-        from .constants import SECONDARY_PADDLE_MAP
-        if event.type == ecodes.EV_SYN:
-            self.gamepad.syn()
-            return
-        if event.type != ecodes.EV_KEY:
-            return
-        code = SECONDARY_PADDLE_MAP.get(event.code)
-        if code is not None:
-            self._last_input_time = time.monotonic()
-            self._dispatch_button(code, event.value)
-
     def _handle_axis(self, event):
         from .constants import AXIS_MAP
         code = event.code
         value = event.value
 
+        if code in (ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
+            return  # DPAD handled via HID bitmask
         if code not in AXIS_MAP:
             return
 
@@ -488,15 +467,17 @@ class BridgeService:
             except OSError:
                 pass
         self._grabbed_devices.clear()
-        self._secondary_devices.clear()
         self._physical = None
 
     def _zero_virtual_outputs(self):
+        from .constants import VIRTUAL_BUTTONS
         if self._rumble:
             self._rumble.stop()
         for axis in (ecodes.ABS_X, ecodes.ABS_Y, ecodes.ABS_RX, ecodes.ABS_RY,
-                     ecodes.ABS_Z, ecodes.ABS_RZ):
+                     ecodes.ABS_Z, ecodes.ABS_RZ, ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
             self.gamepad.emit_axis(axis, 0)
+        for code in VIRTUAL_BUTTONS:
+            self.gamepad.emit_button(code, 0)
         self.gamepad.syn()
         self._raw_left_x = self._raw_left_y = 0
         self._raw_right_x = self._raw_right_y = 0
@@ -534,6 +515,8 @@ class BridgeService:
                                                   notify_thresholds=thresholds)
                     try:
                         self._battery.start()
+                        self._battery.set_input_callbacks(
+                            self._on_hid_button, self._on_hid_axis, self.gamepad.syn)
                     except OSError as e:
                         log.warning("Battery reader unavailable after reconnect: %s", e)
                         self._battery = None

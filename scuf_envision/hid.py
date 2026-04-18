@@ -12,9 +12,12 @@ import threading
 import time
 import logging
 
+from evdev import ecodes
+
 from .constants import (RGB_CMD_OPEN_ENDPOINT, RGB_CMD_WRITE_COLOR, RGB_NUM_LEDS,
                         RGB_CMD_INIT_WRITE, RGB_CMD_TRIGGER_BACKEND, RGB_CMD_ECO_MODE_OFF,
-                        _DZ_INIT, _DZ_MIN, _DZ_MAX)
+                        _DZ_INIT, _DZ_MIN, _DZ_MAX,
+                        HID_BUTTON_MAP, HID_DPAD, HID_BTN_MASK_OFFSET)
 
 log = logging.getLogger(__name__)
 
@@ -186,6 +189,16 @@ class BatteryReader:
         self._prev_level = -1
         self._connect_time: float = 0.0
         self._stable: bool = False
+        self._btn_state: dict[int, bool] = {}
+        self._dpad_state: dict[int, int] = {ecodes.ABS_HAT0X: 0, ecodes.ABS_HAT0Y: 0}
+        self._button_cb = None
+        self._axis_cb = None
+        self._syn_cb = None
+
+    def set_input_callbacks(self, button_cb, axis_cb, syn_cb=None) -> None:
+        self._button_cb = button_cb
+        self._axis_cb = axis_cb
+        self._syn_cb = syn_cb
 
     @property
     def level(self) -> int:
@@ -293,6 +306,7 @@ class BatteryReader:
                 except OSError:
                     break
                 self._parse_battery(data)
+                self._parse_buttons(data)
 
             now = time.monotonic()
             if now >= next_keepalive:
@@ -310,6 +324,29 @@ class BatteryReader:
                     break
                 log.info("Battery poll sent")
                 next_battery = now + _BATTERY_INTERVAL
+
+    def _parse_buttons(self, data: bytes) -> None:
+        if len(data) < 7 or data[0] != 0x03 or data[2] != 0x02:
+            return
+        mask = int.from_bytes(data[HID_BTN_MASK_OFFSET:HID_BTN_MASK_OFFSET + 4], 'little')
+        changed = False
+        for bit, code in HID_BUTTON_MAP.items():
+            state = bool(mask & bit)
+            if state != self._btn_state.get(code, False):
+                self._btn_state[code] = state
+                if self._button_cb:
+                    self._button_cb(code, int(state))
+                changed = True
+        hat_x = sum(d for bit, ax, d in HID_DPAD if ax == ecodes.ABS_HAT0X and (mask & bit))
+        hat_y = sum(d for bit, ax, d in HID_DPAD if ax == ecodes.ABS_HAT0Y and (mask & bit))
+        for axis, val in ((ecodes.ABS_HAT0X, hat_x), (ecodes.ABS_HAT0Y, hat_y)):
+            if val != self._dpad_state[axis]:
+                self._dpad_state[axis] = val
+                if self._axis_cb:
+                    self._axis_cb(axis, val)
+                changed = True
+        if changed and self._syn_cb:
+            self._syn_cb()
 
     def close(self):
         """Close the hidraw fd, which unblocks the read loop."""

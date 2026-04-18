@@ -6,11 +6,11 @@ from dataclasses import dataclass, field
 
 from evdev import ecodes
 
-from .constants import BUTTON_MAP, PADDLE_MAP
+from .constants import HID_BUTTON_MAP
 
 log = logging.getLogger(__name__)
 
-_BASE_MAP = {**BUTTON_MAP, **PADDLE_MAP}
+_BASE_MAP: dict[int, int] = {code: code for code in HID_BUTTON_MAP.values()}
 
 
 @dataclass
@@ -34,7 +34,7 @@ class ProfileManager:
     """Manages named profiles and the active button remap table.
 
     Profiles are defined as {physical_code: virtual_code} override dicts on top
-    of the combined BUTTON_MAP + PADDLE_MAP. Layers add a second tier of overrides
+    of HID_BUTTON_MAP virtual codes. Layers add a second tier of overrides
     within a profile, cycled by a designated switch_button. The effective_button_map
     property reflects the three-way merge: BASE_MAP → profile overrides → layer overrides.
     """

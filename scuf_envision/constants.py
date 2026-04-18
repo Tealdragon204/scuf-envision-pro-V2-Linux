@@ -1,83 +1,82 @@
 """
 Hardware constants and input mapping tables for the SCUF Envision Pro V2.
 
-The SCUF Envision Pro V2 reports wildly non-standard evdev button and axis
-codes. This module defines the translation tables from the physical device's
-codes to standard Xbox gamepad codes.
+All digital buttons are read directly from raw HID reports (32-bit bitmask
+packet), bypassing the kernel HID→evdev translation layer. This gives lower
+latency and captures buttons (paddles, SAX, G-keys) that never appear in evdev.
 
-Sources:
-  - Scufpad (C#): https://github.com/ChaseDRedmon/Scufpad
-  - Gicotto/cacique: https://github.com/Gicotto/cacique-envision-pro-linux
-  - Hardware testing on Garuda Linux
+Analog axes (sticks, triggers) remain on evdev — that path works correctly.
+
+Source for HID bitmask layout: OpenLinkHub (Go) scufenvisionproV2W.go
 """
 
 import evdev
 from evdev import ecodes
 
 # --- USB IDs ---
-SCUF_VENDOR_ID = 0x1B1C      # Corsair (parent company of SCUF)
-SCUF_PRODUCT_ID_WIRED = 0x3A05   # SCUF Envision Pro Controller V2 (wired)
-SCUF_PRODUCT_ID_RECEIVER = 0x3A08  # SCUF Envision Pro Wireless USB Receiver V2
+SCUF_VENDOR_ID = 0x1B1C
+SCUF_PRODUCT_ID_WIRED = 0x3A05
+SCUF_PRODUCT_ID_RECEIVER = 0x3A08
 
-# --- Button mapping ---
-# The SCUF sends non-standard evdev button codes.
-# Map: physical_code -> (standard Xbox code, human name)
-#
-# Physical layout reference (SCUF face buttons use Xbox ABXY layout):
-#   Y (top), X (left), B (right), A (bottom)
+# --- HID button packet ---
+# Button data arrives in packets where data[0]==0x03 and data[2]==0x02.
+# The 32-bit little-endian button mask starts at byte offset 3.
+HID_BTN_MASK_OFFSET = 3
 
-BUTTON_MAP = {
-    ecodes.BTN_SOUTH:          ecodes.BTN_SOUTH,          # A -> A
-    ecodes.BTN_EAST:           ecodes.BTN_EAST,           # B -> B
-    ecodes.BTN_C:              ecodes.BTN_NORTH,          # SCUF sends BTN_C for X -> BTN_NORTH (kernel: BTN_X=BTN_NORTH)
-    ecodes.BTN_NORTH:          ecodes.BTN_WEST,           # Y -> BTN_WEST (kernel: BTN_Y=BTN_WEST)
-    ecodes.BTN_WEST:           ecodes.BTN_TL,             # SCUF sends BTN_WEST for LB
-    ecodes.BTN_Z:              ecodes.BTN_TR,             # SCUF sends BTN_Z for RB
-    ecodes.BTN_TL:             ecodes.BTN_SELECT,         # SCUF sends BTN_TL for Select/Back
-    ecodes.BTN_TR:             ecodes.BTN_START,          # SCUF sends BTN_TR for Start/Menu
-    ecodes.BTN_TL2:            ecodes.BTN_THUMBL,         # SCUF sends BTN_TL2 for L3
-    ecodes.BTN_TR2:            ecodes.BTN_THUMBR,         # SCUF sends BTN_TR2 for R3
-    ecodes.BTN_MODE:           ecodes.BTN_MODE,           # Guide/Xbox button (correct)
+# 32-bit bitmask → canonical virtual button code (emitted to uinput).
+# DPAD bits are excluded here; they are converted to HAT axes via HID_DPAD.
+HID_BUTTON_MAP: dict[int, int] = {
+    0x000020: ecodes.BTN_SOUTH,             # A
+    0x000040: ecodes.BTN_NORTH,             # X
+    0x000080: ecodes.BTN_WEST,              # Y
+    0x000100: ecodes.BTN_EAST,              # B
+    0x000200: ecodes.BTN_TL,                # LB
+    0x000400: ecodes.BTN_TR,                # RB
+    0x002000: ecodes.BTN_THUMBL,            # L3
+    0x004000: ecodes.BTN_THUMBR,            # R3
+    0x010000: ecodes.BTN_SELECT,            # Back/Select
+    0x020000: ecodes.BTN_START,             # Start/Menu
+    0x040000: ecodes.BTN_TRIGGER_HAPPY1,    # P1 (rear, bottom-left)
+    0x080000: ecodes.BTN_TRIGGER_HAPPY2,    # P2 (rear, bottom-right)
+    0x100000: ecodes.BTN_TRIGGER_HAPPY3,    # P3 (rear, top-left)
+    0x200000: ecodes.BTN_TRIGGER_HAPPY4,    # P4 (rear, top-right)
+    0x400000: ecodes.BTN_TRIGGER_HAPPY5,    # S1 (SAX left grip)
+    0x800000: ecodes.BTN_TRIGGER_HAPPY6,    # S2 (SAX right grip)
+    0x1000000: ecodes.BTN_MODE,             # Home/Power/Xbox
+    0x4000000: ecodes.BTN_TRIGGER_HAPPY7,   # G1
+    0x8000000: ecodes.BTN_TRIGGER_HAPPY8,   # G2
+    0x10000000: ecodes.BTN_TRIGGER_HAPPY9,  # G3
+    0x20000000: ecodes.BTN_TRIGGER_HAPPY10, # G4
+    0x40000000: ecodes.BTN_TRIGGER_HAPPY11, # G5
+    0x80000000: ecodes.BTN_TRIGGER_HAPPY12, # Profile button
 }
 
-# Paddle buttons — V2 has 4 physical paddles. The secondary evdev device reports
-# them as face button codes (BTN_SOUTH/EAST/C/NORTH). SECONDARY_PADDLE_MAP below
-# normalises them to unique BTN_TRIGGER_HAPPY codes before profile remapping.
-PADDLE_MAP = {
-    ecodes.BTN_TRIGGER_HAPPY1: ecodes.BTN_TRIGGER_HAPPY1,  # Paddle 1 (bottom-left)
-    ecodes.BTN_TRIGGER_HAPPY2: ecodes.BTN_TRIGGER_HAPPY2,  # Paddle 2 (bottom-right)
-    ecodes.BTN_TRIGGER_HAPPY3: ecodes.BTN_TRIGGER_HAPPY3,  # Paddle 3 (top-left)
-    ecodes.BTN_TRIGGER_HAPPY4: ecodes.BTN_TRIGGER_HAPPY4,  # Paddle 4 (top-right)
-}
+# DPAD: (bitmask, HAT axis code, direction value).
+# HAT0X: -1=Left, 0=Centre, +1=Right
+# HAT0Y: -1=Up,   0=Centre, +1=Down
+HID_DPAD: tuple[tuple[int, int, int], ...] = (
+    (0x000002, ecodes.ABS_HAT0Y, -1),  # Up
+    (0x000004, ecodes.ABS_HAT0Y, +1),  # Down
+    (0x000008, ecodes.ABS_HAT0X, -1),  # Left
+    (0x000010, ecodes.ABS_HAT0X, +1),  # Right
+)
 
-# The secondary evdev device (grabbed by bridge, separate from the main gamepad
-# interface) emits face button codes for paddle presses because the controller
-# firmware binds paddles to face buttons by default. Pre-remap to unique codes
-# before the profile layer so paddles and face buttons are independently bindable.
-SECONDARY_PADDLE_MAP = {
-    ecodes.BTN_SOUTH:  ecodes.BTN_TRIGGER_HAPPY1,  # bottom-left paddle
-    ecodes.BTN_EAST:   ecodes.BTN_TRIGGER_HAPPY2,  # bottom-right paddle
-    ecodes.BTN_C:      ecodes.BTN_TRIGGER_HAPPY3,  # top-left paddle
-    ecodes.BTN_NORTH:  ecodes.BTN_TRIGGER_HAPPY4,  # top-right paddle
-}
+# Sorted button code list for uinput capability declaration.
+VIRTUAL_BUTTONS: list[int] = sorted(HID_BUTTON_MAP.values())
 
 # --- Axis mapping ---
-# The SCUF also sends axes on wrong codes.
-# Map: physical_axis_code -> standard Xbox axis code
-
+# SCUF sends analog axes on non-standard evdev codes; remap to Xbox layout.
+# HAT0X/HAT0Y are intentionally excluded — DPAD is handled via HID_DPAD above.
 AXIS_MAP = {
-    ecodes.ABS_X:      ecodes.ABS_X,      # Left Stick X (correct)
-    ecodes.ABS_Y:      ecodes.ABS_Y,      # Left Stick Y (correct)
-    ecodes.ABS_Z:      ecodes.ABS_RX,     # SCUF sends ABS_Z for Right Stick X
-    ecodes.ABS_RX:     ecodes.ABS_Z,      # SCUF sends ABS_RX for Left Trigger
-    ecodes.ABS_RY:     ecodes.ABS_RZ,     # SCUF sends ABS_RY for Right Trigger
-    ecodes.ABS_RZ:     ecodes.ABS_RY,     # SCUF sends ABS_RZ for Right Stick Y
-    ecodes.ABS_HAT0X:  ecodes.ABS_HAT0X,  # D-pad X (correct)
-    ecodes.ABS_HAT0Y:  ecodes.ABS_HAT0Y,  # D-pad Y (correct)
+    ecodes.ABS_X:  ecodes.ABS_X,    # Left Stick X (correct)
+    ecodes.ABS_Y:  ecodes.ABS_Y,    # Left Stick Y (correct)
+    ecodes.ABS_Z:  ecodes.ABS_RX,   # SCUF: ABS_Z → Right Stick X
+    ecodes.ABS_RX: ecodes.ABS_Z,    # SCUF: ABS_RX → Left Trigger
+    ecodes.ABS_RY: ecodes.ABS_RZ,   # SCUF: ABS_RY → Right Trigger
+    ecodes.ABS_RZ: ecodes.ABS_RY,   # SCUF: ABS_RZ → Right Stick Y
 }
 
 # --- Axis ranges ---
-# (min, max, fuzz, flat) for each output axis on the virtual device
 STICK_MIN = -32768
 STICK_MAX = 32767
 TRIGGER_MIN = 0
@@ -141,7 +140,6 @@ POLL_TIMEOUT_MS = 2  # 500 Hz — matches hardware report rate (wired + Slipstre
 # These byte sequences were inferred from OLH RGB init patterns, NOT confirmed via
 # USB capture of OLH setting deadzone values. Sending wrong commands mutes axis
 # reporting on the physical device. Verify with Wireshark/USBmon before enabling.
-# setup_analog_deadzones() in hid.py is a no-op until verification is complete.
 # Three-step protocol per device: init → write min DZ value → write max DZ value.
 # Values 0–15; combined with RGB_CMD_INIT_WRITE prefix via _packet() in hid.py.
 _DZ_INIT = [bytes([0x80, 0x00]), bytes([0x81, 0x00]), bytes([0x7e, 0x00]), bytes([0x7f, 0x00])]
