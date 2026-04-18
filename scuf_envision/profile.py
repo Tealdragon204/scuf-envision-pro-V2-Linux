@@ -6,11 +6,50 @@ from dataclasses import dataclass, field
 
 from evdev import ecodes
 
-from .constants import BUTTON_MAP, PADDLE_MAP
+from .constants import HID_BUTTON_MAP
 
 log = logging.getLogger(__name__)
 
-_BASE_MAP = {**BUTTON_MAP, **PADDLE_MAP}
+_BASE_MAP: dict[int, int] = {code: code for code in HID_BUTTON_MAP.values()}
+
+# Friendly aliases for the config file — users write P1/S1/G1/PROFILE instead of
+# BTN_TRIGGER_HAPPY* which are arbitrary kernel slot names with no inherent meaning.
+_ALIASES: dict[str, int] = {
+    # Face buttons
+    "A":       ecodes.BTN_SOUTH,
+    "B":       ecodes.BTN_EAST,
+    "X":       ecodes.BTN_NORTH,
+    "Y":       ecodes.BTN_WEST,
+    # Shoulder buttons
+    "LB":      ecodes.BTN_TL,
+    "RB":      ecodes.BTN_TR,
+    # System buttons
+    "SELECT":  ecodes.BTN_SELECT,
+    "BACK":    ecodes.BTN_SELECT,
+    "START":   ecodes.BTN_START,
+    "MENU":    ecodes.BTN_START,
+    "HOME":    ecodes.BTN_MODE,
+    "GUIDE":   ecodes.BTN_MODE,
+    # Stick clicks
+    "L3":      ecodes.BTN_THUMBL,
+    "R3":      ecodes.BTN_THUMBR,
+    # Rear paddles
+    "P1":      ecodes.BTN_TRIGGER_HAPPY1,
+    "P2":      ecodes.BTN_TRIGGER_HAPPY2,
+    "P3":      ecodes.BTN_TRIGGER_HAPPY3,
+    "P4":      ecodes.BTN_TRIGGER_HAPPY4,
+    # SAX grip bumpers
+    "S1":      ecodes.BTN_TRIGGER_HAPPY5,
+    "S2":      ecodes.BTN_TRIGGER_HAPPY6,
+    # G-keys
+    "G1":      ecodes.BTN_TRIGGER_HAPPY7,
+    "G2":      ecodes.BTN_TRIGGER_HAPPY8,
+    "G3":      ecodes.BTN_TRIGGER_HAPPY9,
+    "G4":      ecodes.BTN_TRIGGER_HAPPY10,
+    "G5":      ecodes.BTN_TRIGGER_HAPPY11,
+    # Profile button
+    "PROFILE": ecodes.BTN_TRIGGER_HAPPY12,
+}
 
 
 @dataclass
@@ -22,10 +61,17 @@ class LayerConfig:
 
 
 def _resolve_code(name: str) -> int | None:
-    """Resolve an evdev code name (e.g. 'BTN_SOUTH') to its integer value."""
-    code = getattr(ecodes, name.upper().strip(), None)
+    """Resolve a button name to its evdev integer value.
+
+    Accepts friendly aliases (P1–P4, S1/S2, G1–G5, PROFILE) or any evdev
+    code name (BTN_SOUTH, BTN_TL, etc.).
+    """
+    upper = name.upper().strip()
+    if upper in _ALIASES:
+        return _ALIASES[upper]
+    code = getattr(ecodes, upper, None)
     if code is None or not isinstance(code, int):
-        log.warning("Unknown evdev code %r in profile (skipped)", name)
+        log.warning("Unknown button name %r in profile (skipped)", name)
         return None
     return code
 
@@ -34,7 +80,7 @@ class ProfileManager:
     """Manages named profiles and the active button remap table.
 
     Profiles are defined as {physical_code: virtual_code} override dicts on top
-    of the combined BUTTON_MAP + PADDLE_MAP. Layers add a second tier of overrides
+    of HID_BUTTON_MAP virtual codes. Layers add a second tier of overrides
     within a profile, cycled by a designated switch_button. The effective_button_map
     property reflects the three-way merge: BASE_MAP → profile overrides → layer overrides.
     """

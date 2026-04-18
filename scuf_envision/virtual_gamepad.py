@@ -11,7 +11,7 @@ from evdev import ecodes, UInput
 
 from .constants import (
     VIRTUAL_DEVICE_NAME, VIRTUAL_VENDOR, VIRTUAL_PRODUCT, VIRTUAL_VERSION,
-    AXIS_INFO, BUTTON_MAP, PADDLE_MAP, FF_MAX_EFFECTS,
+    AXIS_INFO, VIRTUAL_BUTTONS, FF_MAX_EFFECTS,
 )
 
 log = logging.getLogger(__name__)
@@ -33,8 +33,7 @@ class VirtualGamepad:
         """
         self._rumble_enabled = rumble
 
-        # Define capabilities: all standard Xbox buttons + paddles
-        all_buttons = sorted(set(BUTTON_MAP.values()) | set(PADDLE_MAP.values()))
+        all_buttons = VIRTUAL_BUTTONS
 
         # Axes with their AbsInfo
         all_axes = [(code, info) for code, info in AXIS_INFO.items()]

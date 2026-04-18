@@ -175,33 +175,24 @@ poll_timeout_ms = 2
 # Each profile is a [profile.NAME] section. NAME is a short identifier with
 # no spaces (e.g. BIOSHOCK, NINTENDO_LAYOUT, RACING).
 #
-# Keys are the raw physical evdev code names the SCUF hardware sends.
-# Values are the virtual Xbox evdev code names games receive.
-# Any button not listed uses the default hardware mapping.
+# All digital buttons are read from HID raw (not evdev), so their canonical
+# virtual codes are the same on both the source and destination side.
+# Keys and values use the same evdev code names — remapping means substituting
+# one output for another. Any button not listed passes through unchanged.
 # Profiles are switched live — no service restart needed.
 #
-# Physical button codes (what the SCUF hardware actually sends):
-#   BTN_SOUTH           = A button (correct)
-#   BTN_EAST            = B button (correct)
-#   BTN_C               = X button (SCUF quirk — not BTN_NORTH)
-#   BTN_NORTH           = Y button (SCUF quirk — not BTN_WEST)
-#   BTN_WEST            = LB bumper (SCUF quirk)
-#   BTN_Z               = RB bumper (SCUF quirk)
-#   BTN_TL              = Select / Back (SCUF quirk)
-#   BTN_TR              = Start / Menu (SCUF quirk)
-#   BTN_TL2             = L3 — left stick click (SCUF quirk)
-#   BTN_TR2             = R3 — right stick click (SCUF quirk)
-#   BTN_MODE            = Guide / Xbox button
-#   BTN_TRIGGER_HAPPY1  = Paddle 1 (bottom-left)
-#   BTN_TRIGGER_HAPPY2  = Paddle 2 (bottom-right)
-#   BTN_TRIGGER_HAPPY3  = Paddle 3 (top-left)
-#   BTN_TRIGGER_HAPPY4  = Paddle 4 (top-right)
+# Button names for profile sections:
 #
-# Virtual output codes (what games see after remapping):
-#   BTN_SOUTH  = A    BTN_NORTH  = X    BTN_TL    = LB    BTN_SELECT  = Back
-#   BTN_EAST   = B    BTN_WEST   = Y    BTN_TR    = RB    BTN_START   = Start
-#   BTN_THUMBL = L3   BTN_THUMBR = R3   BTN_MODE  = Guide
-#   BTN_TRIGGER_HAPPY1/2/3/4 = Paddles (pass-through)
+#   A / B / X / Y              face buttons
+#   LB / RB                    shoulder bumpers
+#   SELECT (or BACK)           select / back button
+#   START  (or MENU)           start / menu button
+#   HOME   (or GUIDE)          home / guide / Xbox button
+#   L3 / R3                    left / right stick click
+#   P1 / P2 / P3 / P4          rear paddles (bottom-left, bottom-right, top-left, top-right)
+#   S1 / S2                    SAX grip bumpers (left, right)
+#   G1 / G2 / G3 / G4 / G5    G-keys
+#   PROFILE                    profile button
 #
 # Run 'scuf-ctl status' to see the active profile.
 # Run 'scuf-ctl profile NAME' to switch profiles without restarting.
@@ -230,12 +221,16 @@ poll_timeout_ms = 2
 # mode = off
 #
 # ---------------------------------------------------------------------------
-# Example: map paddles to face buttons
+# Example: map paddles and SAX/G-keys to standard buttons
 # ---------------------------------------------------------------------------
 # [profile.BIOSHOCK]
-# BTN_TRIGGER_HAPPY1 = BTN_SOUTH
-# BTN_TRIGGER_HAPPY2 = BTN_EAST
-# BTN_TRIGGER_HAPPY3 = BTN_NORTH
+# P1 = A            # rear paddle bottom-left → A
+# P2 = B            # rear paddle bottom-right → B
+# P3 = X            # rear paddle top-left → X
+# P4 = Y            # rear paddle top-right → Y
+# S1 = LB           # left SAX grip → LB
+# S2 = RB           # right SAX grip → RB
+# G1 = SELECT       # G1 → Back
 #
 # ---------------------------------------------------------------------------
 # Example: swap A and B (Nintendo button layout muscle memory)
@@ -260,20 +255,49 @@ poll_timeout_ms = 2
 # configure a switch_button to cycle them with a paddle press.
 #
 # [profile.NAME.layers]
-# switch_button = BTN_TRIGGER_HAPPY3   # paddle that cycles layers on key-down
-# stack = base,combat,stealth          # ordered layer names
+# switch_button = P3            # paddle that cycles layers on key-down
+# stack = base,combat,stealth  # ordered layer names
 #
 # [profile.NAME.layer.base]
 # # empty = just the profile's base overrides
 #
 # [profile.NAME.layer.combat]
-# BTN_TRIGGER_HAPPY1 = BTN_SOUTH
-# BTN_TRIGGER_HAPPY2 = BTN_EAST
+# P1 = A
+# P2 = B
 #
 # [profile.NAME.layer.stealth]
-# BTN_TRIGGER_HAPPY1 = BTN_NORTH
-# BTN_TRIGGER_HAPPY2 = BTN_WEST
+# P1 = X
+# P2 = Y
 #
 # The switch_button is always consumed (never sent to the game). Each press
 # advances to the next layer; wraps back to the first after the last.
 # A notify-send fires on every switch showing the new layer name.
+
+# ---------------------------------------------------------------------------
+# FORMAT reference — all button names, each mapped to itself (no-op)
+# Copy and rename this section to create your own profile.
+# ---------------------------------------------------------------------------
+# [profile.MY_PROFILE]
+# A       = A          # face buttons
+# B       = B
+# X       = X
+# Y       = Y
+# LB      = LB         # shoulder buttons
+# RB      = RB
+# SELECT  = SELECT     # system (also: BACK)
+# START   = START      # system (also: MENU)
+# HOME    = HOME       # system (also: GUIDE)
+# L3      = L3         # left stick click
+# R3      = R3         # right stick click
+# P1      = P1         # rear paddle, bottom-left
+# P2      = P2         # rear paddle, bottom-right
+# P3      = P3         # rear paddle, top-left
+# P4      = P4         # rear paddle, top-right
+# S1      = S1         # SAX grip bumper, left
+# S2      = S2         # SAX grip bumper, right
+# G1      = G1
+# G2      = G2
+# G3      = G3
+# G4      = G4
+# G5      = G5
+# PROFILE = PROFILE    # profile button

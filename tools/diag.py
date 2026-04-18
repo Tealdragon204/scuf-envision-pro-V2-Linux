@@ -21,47 +21,43 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import evdev
 from evdev import ecodes, categorize
 from scuf_envision.discovery import discover_scuf, discover_scuf_with_retry, _get_vid_pid, _has_joystick_handler, _event_number
-from scuf_envision.constants import BUTTON_MAP, PADDLE_MAP, AXIS_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER, VIRTUAL_DEVICE_NAME
+from scuf_envision.constants import HID_BUTTON_MAP, SCUF_VENDOR_ID, SCUF_PRODUCT_ID_WIRED, SCUF_PRODUCT_ID_RECEIVER, VIRTUAL_DEVICE_NAME
 
 # ANSI color codes
 RED = "\033[91m"
 RESET = "\033[0m"
 
-# In RAW mode, these are the button/axis codes that the SCUF sends on the WRONG
-# evdev code (i.e., the bridge must remap them).  Derived from the mapping tables:
-# if source != destination, the raw code is wrong.
-_ALL_BUTTON_MAP = {**BUTTON_MAP, **PADDLE_MAP}
-RAW_WRONG_BUTTONS = {src for src, dst in _ALL_BUTTON_MAP.items() if src != dst}
-RAW_WRONG_AXES = {src for src, dst in AXIS_MAP.items() if src != dst}
+# All digital buttons and axes come from HID raw — evdev is grabbed/suppressed only
+RAW_WRONG_BUTTONS: set = set()
+RAW_WRONG_AXES: set = set()
 
-# Human-readable names for the SCUF's actual physical buttons
+# Buttons the SCUF exposes via evdev (limited set; driver reads all buttons via HID raw)
 SCUF_BUTTON_NAMES = {
-    ecodes.BTN_SOUTH: "A (BTN_SOUTH)",
-    ecodes.BTN_EAST:  "B (BTN_EAST)",
-    ecodes.BTN_C:     "X (BTN_C) -> should be BTN_NORTH (BTN_X)",
-    ecodes.BTN_NORTH: "Y (BTN_NORTH) -> should be BTN_WEST (BTN_Y)",
-    ecodes.BTN_WEST:  "LB (BTN_WEST) -> should be BTN_TL",
-    ecodes.BTN_Z:     "RB (BTN_Z) -> should be BTN_TR",
-    ecodes.BTN_TL:    "Select/Back (BTN_TL)",
-    ecodes.BTN_TR:    "Start/Menu (BTN_TR)",
-    ecodes.BTN_TL2:   "L3/LS Click (BTN_TL2) -> should be BTN_THUMBL",
-    ecodes.BTN_TR2:   "R3/RS Click (BTN_TR2) -> should be BTN_THUMBR",
-    ecodes.BTN_MODE:  "Guide/Xbox (BTN_MODE)",
-    ecodes.BTN_TRIGGER_HAPPY1: "Paddle 1",
-    ecodes.BTN_TRIGGER_HAPPY2: "Paddle 2",
-    ecodes.BTN_TRIGGER_HAPPY3: "Paddle 3",
-    ecodes.BTN_TRIGGER_HAPPY4: "Paddle 4",
+    ecodes.BTN_SOUTH:  "A",
+    ecodes.BTN_EAST:   "B",
+    ecodes.BTN_NORTH:  "X",
+    ecodes.BTN_WEST:   "Y",
+    ecodes.BTN_TL:     "LB",
+    ecodes.BTN_TR:     "RB",
+    ecodes.BTN_SELECT: "Select/Back",
+    ecodes.BTN_START:  "Start/Menu",
+    ecodes.BTN_THUMBL: "L3",
+    ecodes.BTN_THUMBR: "R3",
+    ecodes.BTN_MODE:   "Home/Xbox",
+    # NOTE: paddles (P1-P4), SAX (S1/S2), G-keys (G1-G5), Profile button
+    # are NOT visible in evdev — read from HID raw by the driver.
 }
 
+# Axes the SCUF exposes via evdev (scrambled codes; driver reads all axes via HID raw)
 SCUF_AXIS_NAMES = {
-    ecodes.ABS_X:      "Left Stick X (correct)",
-    ecodes.ABS_Y:      "Left Stick Y (correct)",
-    ecodes.ABS_Z:      "Right Stick X (ABS_Z -> should be ABS_RX)",
-    ecodes.ABS_RX:     "Left Trigger (ABS_RX -> should be ABS_Z)",
-    ecodes.ABS_RY:     "Right Trigger (ABS_RY -> should be ABS_RZ)",
-    ecodes.ABS_RZ:     "Right Stick Y (ABS_RZ -> should be ABS_RY)",
-    ecodes.ABS_HAT0X:  "D-pad X (correct)",
-    ecodes.ABS_HAT0Y:  "D-pad Y (correct)",
+    ecodes.ABS_X:      "Left Stick X",
+    ecodes.ABS_Y:      "Left Stick Y",
+    ecodes.ABS_Z:      "Right Stick X (scrambled — driver reads via HID raw)",
+    ecodes.ABS_RX:     "Left Trigger (scrambled — driver reads via HID raw)",
+    ecodes.ABS_RY:     "Right Trigger (scrambled — driver reads via HID raw)",
+    ecodes.ABS_RZ:     "Right Stick Y (scrambled — driver reads via HID raw)",
+    ecodes.ABS_HAT0X:  "D-pad X (driver reads via HID bitmask)",
+    ecodes.ABS_HAT0Y:  "D-pad Y (driver reads via HID bitmask)",
     ecodes.ABS_MISC:   "ABS_MISC (not a gamepad axis)",
 }
 
@@ -75,13 +71,21 @@ VIRTUAL_BUTTON_NAMES = {
     ecodes.BTN_TR:     "RB",
     ecodes.BTN_SELECT: "Select/Back",
     ecodes.BTN_START:  "Start/Menu",
-    ecodes.BTN_THUMBL: "L3/LS Click",
-    ecodes.BTN_THUMBR: "R3/RS Click",
-    ecodes.BTN_MODE:   "Guide/Xbox",
-    ecodes.BTN_TRIGGER_HAPPY1: "Paddle 1",
-    ecodes.BTN_TRIGGER_HAPPY2: "Paddle 2",
-    ecodes.BTN_TRIGGER_HAPPY3: "Paddle 3",
-    ecodes.BTN_TRIGGER_HAPPY4: "Paddle 4",
+    ecodes.BTN_THUMBL: "L3",
+    ecodes.BTN_THUMBR: "R3",
+    ecodes.BTN_MODE:   "Home/Xbox",
+    ecodes.BTN_TRIGGER_HAPPY1:  "Paddle P1 (rear bottom-left)",
+    ecodes.BTN_TRIGGER_HAPPY2:  "Paddle P2 (rear bottom-right)",
+    ecodes.BTN_TRIGGER_HAPPY3:  "Paddle P3 (rear top-left)",
+    ecodes.BTN_TRIGGER_HAPPY4:  "Paddle P4 (rear top-right)",
+    ecodes.BTN_TRIGGER_HAPPY5:  "SAX S1 (left grip)",
+    ecodes.BTN_TRIGGER_HAPPY6:  "SAX S2 (right grip)",
+    ecodes.BTN_TRIGGER_HAPPY7:  "G1",
+    ecodes.BTN_TRIGGER_HAPPY8:  "G2",
+    ecodes.BTN_TRIGGER_HAPPY9:  "G3",
+    ecodes.BTN_TRIGGER_HAPPY10: "G4",
+    ecodes.BTN_TRIGGER_HAPPY11: "G5",
+    ecodes.BTN_TRIGGER_HAPPY12: "Profile button",
 }
 
 VIRTUAL_AXIS_NAMES = {
@@ -477,8 +481,9 @@ def main():
     print(f"Mode: {mode_label}")
     print("Press buttons and move sticks to see events.")
     if is_raw_mode:
-        print(f"{RED}[ERROR]{RESET} markers indicate inputs the SCUF sends on the")
-        print("wrong evdev code (the bridge remaps these).")
+        print("NOTE: Paddles, SAX, G-keys, and Profile button are read from HID raw")
+        print("by the driver and will NOT appear here (evdev does not expose them).")
+        print(f"{RED}[ERROR]{RESET} markers indicate axis codes remapped by the driver.")
     print("Press Ctrl+C to exit.")
     print("=" * 60)
     print()

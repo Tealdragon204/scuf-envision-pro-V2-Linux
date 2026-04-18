@@ -12,9 +12,12 @@ import threading
 import time
 import logging
 
+from evdev import ecodes
+
 from .constants import (RGB_CMD_OPEN_ENDPOINT, RGB_CMD_WRITE_COLOR, RGB_NUM_LEDS,
                         RGB_CMD_INIT_WRITE, RGB_CMD_TRIGGER_BACKEND, RGB_CMD_ECO_MODE_OFF,
-                        _DZ_INIT, _DZ_MIN, _DZ_MAX)
+                        _DZ_INIT, _DZ_MIN, _DZ_MAX,
+                        HID_BUTTON_MAP, HID_DPAD, HID_BTN_MASK_OFFSET)
 
 log = logging.getLogger(__name__)
 
@@ -186,6 +189,16 @@ class BatteryReader:
         self._prev_level = -1
         self._connect_time: float = 0.0
         self._stable: bool = False
+        self._btn_state: dict[int, bool] = {}
+        self._dpad_state: dict[int, int] = {ecodes.ABS_HAT0X: 0, ecodes.ABS_HAT0Y: 0}
+        self._button_cb = None
+        self._axis_cb = None
+        self._syn_cb = None
+
+    def set_input_callbacks(self, button_cb, axis_cb, syn_cb=None) -> None:
+        self._button_cb = button_cb
+        self._axis_cb = axis_cb
+        self._syn_cb = syn_cb
 
     @property
     def level(self) -> int:
@@ -293,6 +306,8 @@ class BatteryReader:
                 except OSError:
                     break
                 self._parse_battery(data)
+                self._parse_buttons(data)
+                self._parse_triggers(data)
 
             now = time.monotonic()
             if now >= next_keepalive:
@@ -311,8 +326,96 @@ class BatteryReader:
                 log.info("Battery poll sent")
                 next_battery = now + _BATTERY_INTERVAL
 
+    def _parse_buttons(self, data: bytes) -> None:
+        if len(data) < 7 or data[0] != 0x03 or data[2] != 0x02:
+            return
+        mask = int.from_bytes(data[HID_BTN_MASK_OFFSET:HID_BTN_MASK_OFFSET + 4], 'little')
+        changed = False
+        for bit, code in HID_BUTTON_MAP.items():
+            state = bool(mask & bit)
+            if state != self._btn_state.get(code, False):
+                self._btn_state[code] = state
+                if self._button_cb:
+                    self._button_cb(code, int(state))
+                changed = True
+        hat_x = sum(d for bit, ax, d in HID_DPAD if ax == ecodes.ABS_HAT0X and (mask & bit))
+        hat_y = sum(d for bit, ax, d in HID_DPAD if ax == ecodes.ABS_HAT0Y and (mask & bit))
+        for axis, val in ((ecodes.ABS_HAT0X, hat_x), (ecodes.ABS_HAT0Y, hat_y)):
+            if val != self._dpad_state[axis]:
+                self._dpad_state[axis] = val
+                if self._axis_cb:
+                    self._axis_cb(axis, val)
+                changed = True
+        if changed and self._syn_cb:
+            self._syn_cb()
+
+    def _parse_triggers(self, data: bytes) -> None:
+        if len(data) < 8 or data[0] != 0x03 or data[2] != 0x0a:
+            return
+        left  = int.from_bytes(data[4:6], 'little')
+        right = int.from_bytes(data[6:8], 'little')
+        if self._axis_cb:
+            self._axis_cb(ecodes.ABS_Z,  left)
+            self._axis_cb(ecodes.ABS_RZ, right)
+        if self._syn_cb:
+            self._syn_cb()
+
     def close(self):
         """Close the hidraw fd, which unblocks the read loop."""
+        fd, self._fd = self._fd, None
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+class AnalogListener:
+    """Reads analog stick data from USB interface 3 (the dedicated analog HID endpoint).
+
+    Fires axis callbacks for left stick (ABS_X/ABS_Y) and right stick (ABS_RX/ABS_RY)
+    with raw int16 values in the range -32768..32767. Packet format matches OLH's
+    analogDataListener: bytes 1-4 = left stick, bytes 5-8 = right stick, each as two
+    little-endian signed 16-bit values.
+    """
+
+    def __init__(self, hidraw_path: str, axis_cb, syn_cb=None):
+        self._path = hidraw_path
+        self._axis_cb = axis_cb
+        self._syn_cb = syn_cb
+        self._fd = None
+        self._thread = None
+
+    def start(self) -> None:
+        self._fd = os.open(self._path, os.O_RDONLY)
+        self._thread = threading.Thread(
+            target=self._read_loop, daemon=True, name="analog-listener")
+        self._thread.start()
+
+    def _read_loop(self) -> None:
+        while self._fd is not None:
+            r, _, _ = select.select([self._fd], [], [], 0.1)
+            if not r:
+                continue
+            try:
+                data = os.read(self._fd, _REPORT_SIZE)
+            except OSError:
+                break
+            if len(data) < 9:
+                continue
+            lx = int.from_bytes(data[1:3], 'little', signed=True)
+            ly = int.from_bytes(data[3:5], 'little', signed=True)
+            rx = int.from_bytes(data[5:7], 'little', signed=True)
+            ry = int.from_bytes(data[7:9], 'little', signed=True)
+            if self._axis_cb:
+                self._axis_cb(ecodes.ABS_X,  lx)
+                self._axis_cb(ecodes.ABS_Y,  ly)
+                self._axis_cb(ecodes.ABS_RX, rx)
+                self._axis_cb(ecodes.ABS_RY, ry)
+            if self._syn_cb:
+                self._syn_cb()
+
+    def close(self) -> None:
         fd, self._fd = self._fd, None
         if fd is not None:
             try:
