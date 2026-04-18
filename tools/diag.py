@@ -36,21 +36,29 @@ RESET = "\033[0m"
 RAW_WRONG_BUTTONS: set = set()
 RAW_WRONG_AXES: set = set()
 
-# Buttons the SCUF exposes via evdev (limited set; driver reads all buttons via HID raw)
+# Buttons the physical SCUF device emits via evdev — uses scrambled/non-standard codes.
+# The driver bypasses evdev entirely (reads HID raw); this table is only used by --evdev mode.
 SCUF_BUTTON_NAMES = {
-    ecodes.BTN_SOUTH:  "A",
-    ecodes.BTN_EAST:   "B",
-    ecodes.BTN_NORTH:  "X",
-    ecodes.BTN_WEST:   "Y",
-    ecodes.BTN_TL:     "LB",
-    ecodes.BTN_TR:     "RB",
-    ecodes.BTN_SELECT: "Select/Back",
-    ecodes.BTN_START:  "Start/Menu",
-    ecodes.BTN_THUMBL: "L3",
-    ecodes.BTN_THUMBR: "R3",
-    ecodes.BTN_MODE:   "Home/Xbox",
-    # NOTE: paddles (P1-P4), SAX (S1/S2), G-keys (G1-G5), Profile button
-    # are NOT visible in evdev — read from HID raw by the driver.
+    ecodes.BTN_SOUTH:          "A",
+    ecodes.BTN_EAST:           "B",
+    ecodes.BTN_C:              "X  (SCUF uses BTN_C — driver remaps to BTN_NORTH)",
+    ecodes.BTN_NORTH:          "Y  (SCUF uses BTN_NORTH — driver remaps to BTN_WEST)",
+    ecodes.BTN_WEST:           "LB (SCUF uses BTN_WEST — driver remaps to BTN_TL)",
+    ecodes.BTN_Z:              "RB (SCUF uses BTN_Z — driver remaps to BTN_TR)",
+    ecodes.BTN_TL:             "Back / Select (SCUF uses BTN_TL)",
+    ecodes.BTN_TR:             "Start",
+    ecodes.BTN_TL2:            "L3 (SCUF uses BTN_TL2 — driver remaps to BTN_THUMBL)",
+    ecodes.BTN_TR2:            "R3 (SCUF uses BTN_TR2 — driver remaps to BTN_THUMBR)",
+    ecodes.BTN_SELECT:         "Home / Power / Xbox (SCUF uses BTN_SELECT — driver remaps to BTN_MODE)",
+    ecodes.BTN_START:          "G1 (SCUF uses BTN_START — driver remaps to TRIGGER_HAPPY7)",
+    ecodes.BTN_MODE:           "G2 (SCUF uses BTN_MODE — driver remaps to TRIGGER_HAPPY8)",
+    ecodes.BTN_THUMBL:         "G3 (SCUF uses BTN_THUMBL — driver remaps to TRIGGER_HAPPY9)",
+    ecodes.BTN_THUMBR:         "G4 (SCUF uses BTN_THUMBR — driver remaps to TRIGGER_HAPPY10)",
+    # G5 uses an evdev code outside the standard named range (shown as "?" by evtest)
+    ecodes.BTN_TRIGGER_HAPPY1: "Profile button",
+    ecodes.BTN_TRIGGER_HAPPY2: "Unknown (TRIGGER_HAPPY2 — purpose unconfirmed)",
+    ecodes.BTN_TRIGGER_HAPPY3: "Unknown (TRIGGER_HAPPY3 — purpose unconfirmed)",
+    # P1-P4 (paddles) and S1/S2 (SAX grips): NO evdev events from the physical device
 }
 
 # Axes the SCUF exposes via evdev (scrambled codes; driver reads all axes via HID raw)
@@ -363,7 +371,8 @@ def run_deadzone_mode(profile_name=None):
             dev.close()
 
 
-# Human-readable name for each HID button bitmask bit.
+# Human-readable names for each HID button bitmask bit used in --hidraw mode.
+# Entries marked [?] have unverified bit positions — use --bits to discover real positions.
 _HID_BTN_NAMES: dict[int, str] = {
     0x00000020: "Cross / A",
     0x00000040: "Square / X",
@@ -375,19 +384,19 @@ _HID_BTN_NAMES: dict[int, str] = {
     0x00004000: "R3 / RS",
     0x00010000: "Select / Back / Share",
     0x00020000: "Start / Menu / Options",
-    0x00040000: "P1 (paddle bottom-left)",
-    0x00080000: "P2 (paddle bottom-right)",
-    0x00100000: "P3 (paddle top-left)",
-    0x00200000: "P4 (paddle top-right)",
-    0x00400000: "S1 (SAX left grip)",
-    0x00800000: "S2 (SAX right grip)",
-    0x01000000: "Home / PS / Xbox",
-    0x04000000: "G1",
-    0x08000000: "G2",
-    0x10000000: "G3",
-    0x20000000: "G4",
-    0x40000000: "G5",
-    0x80000000: "Profile",
+    0x00040000: "Profile button",          # confirmed via hardware test
+    0x00080000: "[?] bit 0x080000",
+    0x00100000: "[?] bit 0x100000",
+    0x00200000: "[?] bit 0x200000",
+    0x00400000: "[?] bit 0x400000",
+    0x00800000: "[?] bit 0x800000",
+    0x01000000: "[?] bit 0x1000000",
+    0x04000000: "[?] bit 0x4000000",
+    0x08000000: "[?] bit 0x8000000",
+    0x10000000: "[?] bit 0x10000000",
+    0x20000000: "[?] bit 0x20000000",
+    0x40000000: "[?] bit 0x40000000",
+    # 0x80000000 removed — was wrong duplicate for Profile (confirmed at 0x040000)
 }
 
 _DPAD_NAMES = {
@@ -514,6 +523,72 @@ def run_hidraw_mode(discovered, show_sticks: bool = False):
             os.close(analog_fd)
 
 
+def run_bits_mode(discovered):
+    """Raw bitmask discovery — press one button at a time and see exactly which bit flips.
+
+    Use this to identify the correct HID bit positions for paddles, SAX grips, G-keys,
+    Home, and any other button whose bit position is currently unverified.
+    """
+    ctrl_path = discovered.control_hidraw_path
+    if not ctrl_path:
+        print("ERROR: No control hidraw device found.")
+        print("       Try running as root: sudo python3 tools/diag.py --bits")
+        return
+
+    print("=" * 65)
+    print("Mode: BIT DISCOVERY (--bits)")
+    print("Press one button at a time. Each change shows the exact bit position.")
+    print("Use this to confirm paddle / SAX / G-key / Home bit assignments.")
+    print(f"Control hidraw: {ctrl_path}")
+    print("=" * 65)
+    print()
+
+    _CMD_SOFTWARE_MODE = bytes([0x01, 0x03, 0x00, 0x02])
+    endpoint = 0x08
+
+    ctrl_fd = os.open(ctrl_path, os.O_RDWR)
+    buf = bytearray(64)
+    buf[0] = 0x02
+    buf[1] = endpoint
+    buf[2:2 + len(_CMD_SOFTWARE_MODE)] = _CMD_SOFTWARE_MODE
+    os.write(ctrl_fd, bytes(buf))
+
+    prev_mask = 0
+    try:
+        while True:
+            r, _, _ = select.select([ctrl_fd], [], [], 0.5)
+            if not r:
+                continue
+            try:
+                data = os.read(ctrl_fd, 64)
+            except OSError:
+                return
+            if len(data) < HID_BTN_MASK_OFFSET + 4:
+                continue
+            if data[0] != 0x03 or data[2] != 0x02:
+                continue
+
+            mask = int.from_bytes(
+                data[HID_BTN_MASK_OFFSET:HID_BTN_MASK_OFFSET + 4], 'little')
+            changed = mask ^ prev_mask
+            if changed:
+                for shift in range(32):
+                    bit = 1 << shift
+                    if not (changed & bit):
+                        continue
+                    state = "SET    " if mask & bit else "CLEARED"
+                    name = _HID_BTN_NAMES.get(bit, "")
+                    label = f"  — {name}" if name and not name.startswith("[?]") else ""
+                    print(f"  {state}  0x{bit:08x}{label}")
+                print(f"  mask:  0x{mask:08x}")
+                print()
+            prev_mask = mask
+    except KeyboardInterrupt:
+        print("\nDone.")
+    finally:
+        os.close(ctrl_fd)
+
+
 def main():
     from scuf_envision import __version__
 
@@ -531,10 +606,20 @@ def main():
                         help="Force evdev raw mode (legacy; paddles/SAX not visible)")
     parser.add_argument("--sticks", action="store_true",
                         help="Show analog stick values in --hidraw mode (noisy)")
+    parser.add_argument("--bits", action="store_true",
+                        help="Bitmask discovery: press buttons one at a time to find their HID bit positions")
     args = parser.parse_args()
 
     if args.deadzone:
         run_deadzone_mode(profile_name=args.profile)
+        return
+
+    if args.bits:
+        discovered = discover_scuf_with_retry()
+        if discovered is None:
+            print("ERROR: No SCUF controller found.")
+            sys.exit(1)
+        run_bits_mode(discovered)
         return
 
     print("=" * 60)
