@@ -26,6 +26,16 @@ SCUF_PRODUCT_ID_RECEIVER = 0x3A08
 # The 32-bit little-endian button mask starts at byte offset 3.
 HID_BTN_MASK_OFFSET = 3
 
+# DPAD bits in the 32-bit button mask → (axis, direction) pairs.
+# Each tuple: (bitmask, axis_code, value_when_set).
+# Source: OLH scufenvisionproV2W.go digital button parsing.
+HID_DPAD: list[tuple[int, int, int]] = [
+    (0x0001, ecodes.ABS_HAT0Y, -1),  # D-Up
+    (0x0002, ecodes.ABS_HAT0Y,  1),  # D-Down
+    (0x0004, ecodes.ABS_HAT0X, -1),  # D-Left
+    (0x0008, ecodes.ABS_HAT0X,  1),  # D-Right
+]
+
 # 32-bit bitmask → canonical virtual button code (emitted to uinput).
 # DPAD bits are excluded here; they are converted to HAT axes via HID_DPAD.
 HID_BUTTON_MAP: dict[int, int] = {
@@ -63,10 +73,9 @@ PADDLE_MAP = {
     ecodes.BTN_TRIGGER_HAPPY4: ecodes.BTN_TRIGGER_HAPPY4,  # Paddle 4 (top-right)
 }
 
-# --- Axis mapping ---
-# The SCUF also sends axes on wrong codes.
-# Map: physical_axis_code -> standard Xbox axis code
-
+# --- Axis mapping (legacy evdev) ---
+# Retained for reference only. Input is now read from raw HID packets, not evdev,
+# so this table is no longer applied at runtime.
 AXIS_MAP = {
     ecodes.ABS_X:      ecodes.ABS_X,      # Left Stick X (correct)
     ecodes.ABS_Y:      ecodes.ABS_Y,      # Left Stick Y (correct)
