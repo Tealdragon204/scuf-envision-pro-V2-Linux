@@ -15,17 +15,39 @@ _BASE_MAP: dict[int, int] = {code: code for code in HID_BUTTON_MAP.values()}
 # Friendly aliases for the config file — users write P1/S1/G1/PROFILE instead of
 # BTN_TRIGGER_HAPPY* which are arbitrary kernel slot names with no inherent meaning.
 _ALIASES: dict[str, int] = {
+    # Face buttons
+    "A":       ecodes.BTN_SOUTH,
+    "B":       ecodes.BTN_EAST,
+    "X":       ecodes.BTN_NORTH,
+    "Y":       ecodes.BTN_WEST,
+    # Shoulder buttons
+    "LB":      ecodes.BTN_TL,
+    "RB":      ecodes.BTN_TR,
+    # System buttons
+    "SELECT":  ecodes.BTN_SELECT,
+    "BACK":    ecodes.BTN_SELECT,
+    "START":   ecodes.BTN_START,
+    "MENU":    ecodes.BTN_START,
+    "HOME":    ecodes.BTN_MODE,
+    "GUIDE":   ecodes.BTN_MODE,
+    # Stick clicks
+    "L3":      ecodes.BTN_THUMBL,
+    "R3":      ecodes.BTN_THUMBR,
+    # Rear paddles
     "P1":      ecodes.BTN_TRIGGER_HAPPY1,
     "P2":      ecodes.BTN_TRIGGER_HAPPY2,
     "P3":      ecodes.BTN_TRIGGER_HAPPY3,
     "P4":      ecodes.BTN_TRIGGER_HAPPY4,
+    # SAX grip bumpers
     "S1":      ecodes.BTN_TRIGGER_HAPPY5,
     "S2":      ecodes.BTN_TRIGGER_HAPPY6,
+    # G-keys
     "G1":      ecodes.BTN_TRIGGER_HAPPY7,
     "G2":      ecodes.BTN_TRIGGER_HAPPY8,
     "G3":      ecodes.BTN_TRIGGER_HAPPY9,
     "G4":      ecodes.BTN_TRIGGER_HAPPY10,
     "G5":      ecodes.BTN_TRIGGER_HAPPY11,
+    # Profile button
     "PROFILE": ecodes.BTN_TRIGGER_HAPPY12,
 }
 

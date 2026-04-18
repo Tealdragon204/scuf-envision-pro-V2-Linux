@@ -183,25 +183,16 @@ poll_timeout_ms = 2
 #
 # Button names for profile sections:
 #
-#   Standard face / shoulder / stick buttons:
-#     BTN_SOUTH  = A       BTN_NORTH  = X       BTN_TL    = LB
-#     BTN_EAST   = B       BTN_WEST   = Y        BTN_TR    = RB
-#     BTN_SELECT = Back    BTN_START  = Menu     BTN_MODE  = Home/Guide
-#     BTN_THUMBL = L3      BTN_THUMBR = R3
-#
-#   SCUF extra buttons (use these short names directly):
-#     P1  = rear paddle, bottom-left
-#     P2  = rear paddle, bottom-right
-#     P3  = rear paddle, top-left
-#     P4  = rear paddle, top-right
-#     S1  = SAX grip bumper, left
-#     S2  = SAX grip bumper, right
-#     G1  = G-key 1
-#     G2  = G-key 2
-#     G3  = G-key 3
-#     G4  = G-key 4
-#     G5  = G-key 5
-#     PROFILE = profile button
+#   A / B / X / Y              face buttons
+#   LB / RB                    shoulder bumpers
+#   SELECT (or BACK)           select / back button
+#   START  (or MENU)           start / menu button
+#   HOME   (or GUIDE)          home / guide / Xbox button
+#   L3 / R3                    left / right stick click
+#   P1 / P2 / P3 / P4          rear paddles (bottom-left, bottom-right, top-left, top-right)
+#   S1 / S2                    SAX grip bumpers (left, right)
+#   G1 / G2 / G3 / G4 / G5    G-keys
+#   PROFILE                    profile button
 #
 # Run 'scuf-ctl status' to see the active profile.
 # Run 'scuf-ctl profile NAME' to switch profiles without restarting.
@@ -233,13 +224,13 @@ poll_timeout_ms = 2
 # Example: map paddles and SAX/G-keys to standard buttons
 # ---------------------------------------------------------------------------
 # [profile.BIOSHOCK]
-# P1 = BTN_SOUTH    # rear paddle bottom-left → A
-# P2 = BTN_EAST     # rear paddle bottom-right → B
-# P3 = BTN_NORTH    # rear paddle top-left → X
-# P4 = BTN_WEST     # rear paddle top-right → Y
-# S1 = BTN_TL       # left SAX grip → LB
-# S2 = BTN_TR       # right SAX grip → RB
-# G1 = BTN_SELECT   # G1 → Back
+# P1 = A            # rear paddle bottom-left → A
+# P2 = B            # rear paddle bottom-right → B
+# P3 = X            # rear paddle top-left → X
+# P4 = Y            # rear paddle top-right → Y
+# S1 = LB           # left SAX grip → LB
+# S2 = RB           # right SAX grip → RB
+# G1 = SELECT       # G1 → Back
 #
 # ---------------------------------------------------------------------------
 # Example: swap A and B (Nintendo button layout muscle memory)
@@ -264,65 +255,49 @@ poll_timeout_ms = 2
 # configure a switch_button to cycle them with a paddle press.
 #
 # [profile.NAME.layers]
-# switch_button = P3             # paddle that cycles layers on key-down
-# stack = base,combat,stealth   # ordered layer names
+# switch_button = P3            # paddle that cycles layers on key-down
+# stack = base,combat,stealth  # ordered layer names
 #
 # [profile.NAME.layer.base]
 # # empty = just the profile's base overrides
 #
 # [profile.NAME.layer.combat]
-# P1 = BTN_SOUTH
-# P2 = BTN_EAST
+# P1 = A
+# P2 = B
 #
 # [profile.NAME.layer.stealth]
-# P1 = BTN_NORTH
-# P2 = BTN_WEST
+# P1 = X
+# P2 = Y
 #
 # The switch_button is always consumed (never sent to the game). Each press
 # advances to the next layer; wraps back to the first after the last.
 # A notify-send fires on every switch showing the new layer name.
 
 # ---------------------------------------------------------------------------
-# FORMAT reference profile — every button mapped to itself (no-op)
-# Shows the full set of names you can use on either side of a remap.
-# Switch to it with: scuf-ctl profile FORMAT
+# FORMAT reference — all button names, each mapped to itself (no-op)
+# Copy and rename this section to create your own profile.
 # ---------------------------------------------------------------------------
-[profile.FORMAT]
-# Standard face buttons
-BTN_SOUTH  = BTN_SOUTH    # A
-BTN_EAST   = BTN_EAST     # B
-BTN_NORTH  = BTN_NORTH    # X
-BTN_WEST   = BTN_WEST     # Y
-
-# Shoulder buttons
-BTN_TL     = BTN_TL       # LB
-BTN_TR     = BTN_TR       # RB
-
-# System buttons
-BTN_SELECT = BTN_SELECT   # Back / Select
-BTN_START  = BTN_START    # Start / Menu
-BTN_MODE   = BTN_MODE     # Home / Guide / Xbox
-
-# Stick clicks
-BTN_THUMBL = BTN_THUMBL   # L3
-BTN_THUMBR = BTN_THUMBR   # R3
-
-# Rear paddles
-P1 = P1                   # rear, bottom-left
-P2 = P2                   # rear, bottom-right
-P3 = P3                   # rear, top-left
-P4 = P4                   # rear, top-right
-
-# SAX grip bumpers
-S1 = S1                   # left grip
-S2 = S2                   # right grip
-
-# G-keys
-G1 = G1
-G2 = G2
-G3 = G3
-G4 = G4
-G5 = G5
-
-# Profile button
-PROFILE = PROFILE
+# [profile.MY_PROFILE]
+# A       = A          # face buttons
+# B       = B
+# X       = X
+# Y       = Y
+# LB      = LB         # shoulder buttons
+# RB      = RB
+# SELECT  = SELECT     # system (also: BACK)
+# START   = START      # system (also: MENU)
+# HOME    = HOME       # system (also: GUIDE)
+# L3      = L3         # left stick click
+# R3      = R3         # right stick click
+# P1      = P1         # rear paddle, bottom-left
+# P2      = P2         # rear paddle, bottom-right
+# P3      = P3         # rear paddle, top-left
+# P4      = P4         # rear paddle, top-right
+# S1      = S1         # SAX grip bumper, left
+# S2      = S2         # SAX grip bumper, right
+# G1      = G1
+# G2      = G2
+# G3      = G3
+# G4      = G4
+# G5      = G5
+# PROFILE = PROFILE    # profile button
