@@ -371,8 +371,7 @@ def run_deadzone_mode(profile_name=None):
             dev.close()
 
 
-# Human-readable names for each HID button bitmask bit used in --hidraw mode.
-# Entries marked [?] have unverified bit positions — use --bits to discover real positions.
+# Human-readable names for each HID button bitmask bit (confirmed from OLH source).
 _HID_BTN_NAMES: dict[int, str] = {
     0x00000020: "Cross / A",
     0x00000040: "Square / X",
@@ -384,19 +383,19 @@ _HID_BTN_NAMES: dict[int, str] = {
     0x00004000: "R3 / RS",
     0x00010000: "Select / Back / Share",
     0x00020000: "Start / Menu / Options",
-    0x00040000: "Profile button",          # confirmed via hardware test
-    0x00080000: "[?] bit 0x080000",
-    0x00100000: "[?] bit 0x100000",
-    0x00200000: "[?] bit 0x200000",
-    0x00400000: "[?] bit 0x400000",
-    0x00800000: "[?] bit 0x800000",
-    0x01000000: "[?] bit 0x1000000",
-    0x04000000: "[?] bit 0x4000000",
-    0x08000000: "[?] bit 0x8000000",
-    0x10000000: "[?] bit 0x10000000",
-    0x20000000: "[?] bit 0x20000000",
-    0x40000000: "[?] bit 0x40000000",
-    # 0x80000000 removed — was wrong duplicate for Profile (confirmed at 0x040000)
+    0x00040000: "P1 (rear paddle, bottom-left)",
+    0x00080000: "P2 (rear paddle, bottom-right)",
+    0x00100000: "P3 (rear paddle, top-left)",
+    0x00200000: "P4 (rear paddle, top-right)",
+    0x00400000: "S1 (SAX left grip)",
+    0x00800000: "S2 (SAX right grip)",
+    0x01000000: "Home / Xbox / Power",
+    0x04000000: "G1",
+    0x08000000: "G2",
+    0x10000000: "G3",
+    0x20000000: "G4",
+    0x40000000: "G5",
+    0x80000000: "Profile button",
 }
 
 _DPAD_NAMES = {

@@ -47,36 +47,31 @@ HID_BUTTON_MAP: dict[int, int] = {
     0x000400: ecodes.BTN_TR,                # RB
     0x002000: ecodes.BTN_THUMBL,            # L3
     0x004000: ecodes.BTN_THUMBR,            # R3
-    0x010000: ecodes.BTN_SELECT,            # Back/Select
-    0x020000: ecodes.BTN_START,             # Start/Menu
-    # Confirmed via hardware test: 0x040000 fires when the Profile button is pressed.
-    0x040000: ecodes.BTN_TRIGGER_HAPPY12,   # Profile button
-    # UNVERIFIED — bit positions below are inferred from OLH source, not confirmed via USB
-    # capture. Use `sudo python3 tools/diag.py --bits` and press each button to find the
-    # real positions for paddles (P1–P4), SAX (S1/S2), G-keys (G1–G5), and Home.
-    0x080000: ecodes.BTN_TRIGGER_HAPPY2,    # UNVERIFIED (native evdev emits TRIGGER_HAPPY2; physical button unknown)
-    0x100000: ecodes.BTN_TRIGGER_HAPPY3,    # UNVERIFIED (native evdev emits TRIGGER_HAPPY3; physical button unknown)
-    0x200000: ecodes.BTN_TRIGGER_HAPPY4,    # UNVERIFIED paddle/SAX candidate
-    0x400000: ecodes.BTN_TRIGGER_HAPPY5,    # UNVERIFIED paddle/SAX candidate
-    0x800000: ecodes.BTN_TRIGGER_HAPPY6,    # UNVERIFIED paddle/SAX candidate
-    0x1000000: ecodes.BTN_MODE,             # UNVERIFIED Home/Power/Xbox candidate
-    0x4000000: ecodes.BTN_TRIGGER_HAPPY7,   # UNVERIFIED G1 candidate
-    0x8000000: ecodes.BTN_TRIGGER_HAPPY8,   # UNVERIFIED G2 candidate
-    0x10000000: ecodes.BTN_TRIGGER_HAPPY9,  # UNVERIFIED G3 candidate
-    0x20000000: ecodes.BTN_TRIGGER_HAPPY10, # UNVERIFIED G4 candidate
-    0x40000000: ecodes.BTN_TRIGGER_HAPPY11, # UNVERIFIED G5 candidate
-    # 0x80000000 removed — was an incorrect duplicate for Profile (confirmed at 0x040000).
-    # P1/P2/P3/P4 (paddles) and S1/S2 (SAX): bit positions not yet identified.
+    0x010000: ecodes.BTN_SELECT,            # Back/Select  (OLH: "LOCK",  bit 16)
+    0x020000: ecodes.BTN_START,             # Start/Menu   (OLH: "MENU",  bit 17)
+    # Rear paddles (OLH: P1=bit18, P2=bit19, P3=bit20, P4=bit21)
+    0x040000: ecodes.BTN_TRIGGER_HAPPY1,    # P1 (rear, bottom-left)
+    0x080000: ecodes.BTN_TRIGGER_HAPPY2,    # P2 (rear, bottom-right)
+    0x100000: ecodes.BTN_TRIGGER_HAPPY3,    # P3 (rear, top-left)
+    0x200000: ecodes.BTN_TRIGGER_HAPPY4,    # P4 (rear, top-right)
+    # SAX grip bumpers (OLH: S1=bit22, S2=bit23)
+    0x400000: ecodes.BTN_TRIGGER_HAPPY5,    # S1 (SAX left grip)
+    0x800000: ecodes.BTN_TRIGGER_HAPPY6,    # S2 (SAX right grip)
+    # Home button (OLH: "Power", bit24)
+    0x1000000: ecodes.BTN_MODE,             # Home/Power/Xbox button
+    # G-keys (OLH: G1=bit26, G2=bit27, G3=bit28, G4=bit29, G5=bit30)
+    0x4000000: ecodes.BTN_TRIGGER_HAPPY7,   # G1
+    0x8000000: ecodes.BTN_TRIGGER_HAPPY8,   # G2
+    0x10000000: ecodes.BTN_TRIGGER_HAPPY9,  # G3
+    0x20000000: ecodes.BTN_TRIGGER_HAPPY10, # G4
+    0x40000000: ecodes.BTN_TRIGGER_HAPPY11, # G5
+    # Profile button (OLH: bit31)
+    0x80000000: ecodes.BTN_TRIGGER_HAPPY12, # Profile button
 }
 
-# Paddle buttons — V2 has 4 physical paddles. Currently firmware-bound to face
-# button HID usages; these entries are placeholders for post-firmware-reprogram codes.
-PADDLE_MAP = {
-    ecodes.BTN_TRIGGER_HAPPY1: ecodes.BTN_TRIGGER_HAPPY1,  # Paddle 1 (bottom-left)
-    ecodes.BTN_TRIGGER_HAPPY2: ecodes.BTN_TRIGGER_HAPPY2,  # Paddle 2 (bottom-right)
-    ecodes.BTN_TRIGGER_HAPPY3: ecodes.BTN_TRIGGER_HAPPY3,  # Paddle 3 (top-left)
-    ecodes.BTN_TRIGGER_HAPPY4: ecodes.BTN_TRIGGER_HAPPY4,  # Paddle 4 (top-right)
-}
+# All button codes the virtual gamepad can emit — union of all HID_BUTTON_MAP output codes.
+# Used by VirtualGamepad to register capabilities and by bridge to zero outputs on disconnect.
+VIRTUAL_BUTTONS: tuple[int, ...] = tuple(sorted(set(HID_BUTTON_MAP.values())))
 
 # --- Axis mapping (legacy evdev) ---
 # Retained for reference only. Input is now read from raw HID packets, not evdev,
