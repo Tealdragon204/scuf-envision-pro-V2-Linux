@@ -272,6 +272,23 @@ poll_timeout_ms = 2
 # The switch_button is always consumed (never sent to the game). Each press
 # advances to the next layer; wraps back to the first after the last.
 # A notify-send fires on every switch showing the new layer name.
+#
+# ---------------------------------------------------------------------------
+# Macros — button-to-sequence bindings (profile-level)
+# ---------------------------------------------------------------------------
+# A macro fires a sequence of button presses when a trigger button is pressed.
+# Both the physical press and release of the trigger are consumed (not forwarded).
+# If the trigger is pressed while its macro is still running, the running macro
+# is cancelled and restarted immediately.
+#
+# Format: PHYSICAL_BUTTON = STEP,STEP,...
+# Each STEP: BUTTON_NAME:HOLD_MS
+#   HOLD_MS = milliseconds to hold the button before releasing
+#   HOLD_MS = 0 means a default tap (~30 ms)
+#
+# [profile.BIOSHOCK.macros]
+# P1 = A:50,B:100,X:0    # P1 fires A (50 ms) → B (100 ms) → X (tap)
+# S1 = LB:30,RB:30        # S1 fires LB (30 ms) then RB (30 ms)
 
 # ---------------------------------------------------------------------------
 # Default configuration — every input at its factory default.
