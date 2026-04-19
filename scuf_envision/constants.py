@@ -30,10 +30,10 @@ HID_BTN_MASK_OFFSET = 3
 # Each tuple: (bitmask, axis_code, value_when_set).
 # Source: OLH scufenvisionproV2W.go digital button parsing.
 HID_DPAD: list[tuple[int, int, int]] = [
-    (0x0001, ecodes.ABS_HAT0Y, -1),  # D-Up
-    (0x0002, ecodes.ABS_HAT0Y,  1),  # D-Down
-    (0x0004, ecodes.ABS_HAT0X, -1),  # D-Left
-    (0x0008, ecodes.ABS_HAT0X,  1),  # D-Right
+    (0x0002, ecodes.ABS_HAT0Y, -1),  # D-Up
+    (0x0004, ecodes.ABS_HAT0Y,  1),  # D-Down
+    (0x0008, ecodes.ABS_HAT0X, -1),  # D-Left
+    (0x0010, ecodes.ABS_HAT0X,  1),  # D-Right
 ]
 
 # 32-bit bitmask → canonical virtual button code (emitted to uinput).
