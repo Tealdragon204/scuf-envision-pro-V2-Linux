@@ -165,15 +165,12 @@ def setup_analog_deadzones(hidraw_path: str, connection_type: str,
         os.close(fd)
 
 
-class BatteryReader:
-    """Reads battery level from the SCUF control HID interface.
+class ControlReader:
+    """Reads all input from the SCUF control HID interface (hidraw, interface 0).
 
-    Sends software-mode then battery-query with OLH's 64-byte packet framing.
-    The read loop uses select with a short timeout so it can send keepalives
-    every 20s (matching OLH's heartbeat) and re-poll battery every 60s without
-    blocking shutdown. Battery updates arrive either as direct query responses
-    (wired, bytes [4:6]) or as unsolicited dongle reports (wireless, bytes [5:7],
-    signature data[0]==0x03, data[2]==0x01, data[3]==0x0f).
+    Handles buttons (data[2]==0x02), triggers/L2/R2 (data[2]==0x0a), and battery
+    polling. Sends software-mode init, keepalives every 20s, and battery queries
+    every 60s using OLH's 64-byte packet framing.
     """
 
     def __init__(self, hidraw_path: str, connection_type: str = "wired",
