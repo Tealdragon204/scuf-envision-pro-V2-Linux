@@ -5,6 +5,7 @@ scuf-ctl — IPC client for the SCUF Envision Pro V2 driver.
 Usage:
     scuf-ctl ping                              Check if driver is running
     scuf-ctl status                            Show driver status
+    scuf-ctl reload                            Hot-reload config.ini (profiles, remaps, macros, deadzones)
     scuf-ctl profile NAME                      Switch to a named profile (live)
     scuf-ctl profile default                   Restore default profile
     scuf-ctl layer NAME                        Switch to a named layer in the active profile
@@ -85,6 +86,13 @@ def main():
         print(f"RGB:        {'yes' if data.get('rgb') else 'no'}")
         print(f"Driver PID: {data.get('pid', '?')}")
         print(f"Version:    {data.get('driver_version', '?')}")
+
+    elif cmd == "reload":
+        resp = send_command("reload")
+        if resp.startswith("error:"):
+            print(resp, file=sys.stderr)
+            sys.exit(1)
+        print("Config reloaded.")
 
     elif cmd == "profile":
         if len(args) < 2:

@@ -262,6 +262,7 @@ class BridgeService:
                             "set_rgb": self._set_rgb_mode,
                             "on_profile_switch": self._on_profile_switch,
                             "on_layer_switch": self._on_layer_switch,
+                            "on_reload": self._on_reload,
                         }
                     )
 
@@ -415,6 +416,17 @@ class BridgeService:
                   p['left_stick_deadzone_sw'], p['right_stick_deadzone_sw'],
                   p['left_stick_anti_deadzone'], p['right_stick_anti_deadzone'],
                   p['jitter_threshold'])
+
+    def _on_reload(self) -> None:
+        """Re-read config.ini and rebuild ProfileManager + InputFilter in place."""
+        config = load_config()
+        old_name = self._profile.active_name if self._profile else "default"
+        new_mgr = ProfileManager.from_config(config)
+        if old_name in new_mgr.list_profiles():
+            new_mgr.switch(old_name)
+        self._profile = new_mgr
+        self._reload_input_config()
+        log.info("Config reloaded; active profile: %s", self._profile.active_name)
 
     def _on_profile_switch(self) -> None:
         from .hid import _notify
