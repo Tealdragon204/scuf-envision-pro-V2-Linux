@@ -100,8 +100,6 @@ class BridgeService:
                                               notify_thresholds=thresholds)
                 try:
                     self._control.start()
-                    self._control.set_input_callbacks(
-                        self._on_hid_button, self._on_hid_axis, self.gamepad.syn)
                 except OSError as e:
                     log.warning("Battery reader unavailable: %s", e)
                     self._control = None
@@ -125,6 +123,14 @@ class BridgeService:
                 except OSError as e:
                     log.warning("RGB unavailable: %s", e)
                     self._rgb = None
+
+            # Register input callbacks AFTER RGB init so that firmware ack packets
+            # (which can arrive on ControlReader's fd and look like button-mask
+            # packets) don't poison _btn_state before any real presses occur.
+            # set_input_callbacks() clears _btn_state on registration.
+            if self._control:
+                self._control.set_input_callbacks(
+                    self._on_hid_button, self._on_hid_axis, self.gamepad.syn)
 
             # Load profiles from config
             config = load_config()
