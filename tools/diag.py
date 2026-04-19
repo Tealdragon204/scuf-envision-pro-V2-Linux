@@ -522,11 +522,12 @@ def run_hidraw_mode(discovered, show_sticks: bool = False):
             os.close(analog_fd)
 
 
-def run_bits_mode(discovered):
+def run_bits_mode(discovered, show_sticks: bool = False):
     """Raw bitmask discovery — press one button at a time and see exactly which bit flips.
 
     Use this to identify the correct HID bit positions for paddles, SAX grips, G-keys,
     Home, and any other button whose bit position is currently unverified.
+    Also shows trigger values and (with show_sticks) analog stick values.
     """
     ctrl_path = discovered.control_hidraw_path
     if not ctrl_path:
@@ -534,11 +535,15 @@ def run_bits_mode(discovered):
         print("       Try running as root: sudo python3 tools/diag.py --bits")
         return
 
+    analog_path = discovered.hidraw_path if show_sticks else None
+
     print("=" * 65)
     print("Mode: BIT DISCOVERY (--bits)")
     print("Press one button at a time. Each change shows the exact bit position.")
     print("Use this to confirm paddle / SAX / G-key / Home bit assignments.")
     print(f"Control hidraw: {ctrl_path}")
+    if analog_path:
+        print(f"Analog hidraw:  {analog_path} (showing sticks)")
     print("=" * 65)
     print()
 
@@ -552,40 +557,66 @@ def run_bits_mode(discovered):
     buf[2:2 + len(_CMD_SOFTWARE_MODE)] = _CMD_SOFTWARE_MODE
     os.write(ctrl_fd, bytes(buf))
 
+    analog_fd = os.open(analog_path, os.O_RDONLY) if analog_path else None
+    fds = [ctrl_fd] + ([analog_fd] if analog_fd else [])
+
     prev_mask = 0
+    prev_triggers = (-1, -1)
+
     try:
         while True:
-            r, _, _ = select.select([ctrl_fd], [], [], 0.5)
-            if not r:
-                continue
-            try:
-                data = os.read(ctrl_fd, 64)
-            except OSError:
-                return
-            if len(data) < HID_BTN_MASK_OFFSET + 4:
-                continue
-            if data[0] != 0x03 or data[2] != 0x02:
-                continue
+            r, _, _ = select.select(fds, [], [], 0.5)
+            for fd in r:
+                try:
+                    data = os.read(fd, 64)
+                except OSError:
+                    return
 
-            mask = int.from_bytes(
-                data[HID_BTN_MASK_OFFSET:HID_BTN_MASK_OFFSET + 4], 'little')
-            changed = mask ^ prev_mask
-            if changed:
-                for shift in range(32):
-                    bit = 1 << shift
-                    if not (changed & bit):
+                if fd == ctrl_fd:
+                    if len(data) < 3:
                         continue
-                    state = "SET    " if mask & bit else "CLEARED"
-                    name = _HID_BTN_NAMES.get(bit, "")
-                    label = f"  — {name}" if name and not name.startswith("[?]") else ""
-                    print(f"  {state}  0x{bit:08x}{label}")
-                print(f"  mask:  0x{mask:08x}")
-                print()
-            prev_mask = mask
+
+                    if data[0] == 0x03 and data[2] == 0x02:
+                        if len(data) < HID_BTN_MASK_OFFSET + 4:
+                            continue
+                        mask = int.from_bytes(
+                            data[HID_BTN_MASK_OFFSET:HID_BTN_MASK_OFFSET + 4], 'little')
+                        changed = mask ^ prev_mask
+                        if changed:
+                            for shift in range(32):
+                                bit = 1 << shift
+                                if not (changed & bit):
+                                    continue
+                                state = "SET    " if mask & bit else "CLEARED"
+                                name = _HID_BTN_NAMES.get(bit, "")
+                                label = f"  — {name}" if name and not name.startswith("[?]") else ""
+                                print(f"  {state}  0x{bit:08x}{label}")
+                            print(f"  mask:  0x{mask:08x}")
+                            print()
+                        prev_mask = mask
+
+                    elif data[0] == 0x03 and data[2] == 0x0a:
+                        if len(data) < 8:
+                            continue
+                        left  = int.from_bytes(data[4:6], 'little')
+                        right = int.from_bytes(data[6:8], 'little')
+                        if (left, right) != prev_triggers:
+                            print(f"  TRIGGER  L2={left:>4}  R2={right:>4}  (0–1023)")
+                            prev_triggers = (left, right)
+
+                elif fd == analog_fd and len(data) >= 9:
+                    lx = int.from_bytes(data[1:3], 'little', signed=True)
+                    ly = int.from_bytes(data[3:5], 'little', signed=True)
+                    rx = int.from_bytes(data[5:7], 'little', signed=True)
+                    ry = int.from_bytes(data[7:9], 'little', signed=True)
+                    print(f"  STICK    L({lx:>7}, {ly:>7})  R({rx:>7}, {ry:>7})")
+
     except KeyboardInterrupt:
         print("\nDone.")
     finally:
         os.close(ctrl_fd)
+        if analog_fd is not None:
+            os.close(analog_fd)
 
 
 def main():
@@ -604,7 +635,7 @@ def main():
     parser.add_argument("--evdev", action="store_true",
                         help="Force evdev raw mode (legacy; paddles/SAX not visible)")
     parser.add_argument("--sticks", action="store_true",
-                        help="Show analog stick values in --hidraw mode (noisy)")
+                        help="Show analog stick values in HID raw / --bits mode (noisy)")
     parser.add_argument("--bits", action="store_true",
                         help="Bitmask discovery: press buttons one at a time to find their HID bit positions")
     args = parser.parse_args()
@@ -618,7 +649,7 @@ def main():
         if discovered is None:
             print("ERROR: No SCUF controller found.")
             sys.exit(1)
-        run_bits_mode(discovered)
+        run_bits_mode(discovered, show_sticks=args.sticks)
         return
 
     print("=" * 60)
@@ -706,17 +737,15 @@ def main():
         except Exception:
             pass
         print("The bridge has exclusive access to the physical controller.")
-        if args.hidraw:
-            print("Switching to HID raw mode as requested (--hidraw).")
+        if args.evdev:
+            print("Switching to virtual device mode (--evdev) to show bridge remapped output.")
         else:
-            print("Switching to virtual device mode to show the bridge's remapped output.")
+            print("Using HID raw mode (bypasses bridge). Use --evdev for bridge remapped output.")
         print("!" * 60)
         print()
 
-    # Route to HID raw mode:
-    #   - explicitly requested (--hidraw), OR
-    #   - bridge is not running AND --evdev not forced
-    use_hidraw = args.hidraw or (not virtual_dev and not args.evdev)
+    # Always use HID raw unless --evdev is explicitly requested
+    use_hidraw = not args.evdev
 
     if use_hidraw:
         dev.close()
