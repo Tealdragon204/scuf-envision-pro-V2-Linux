@@ -24,34 +24,28 @@ A userspace driver that makes the SCUF Envision Pro V2 controller work correctly
 Physical SCUF Controller (VID 1b1c, PID 3a05 wired / 3a08 wireless)
         |
         +--- evdev interface (/dev/input/eventN)
-        |           |
-        |     Auto-detection (sysfs VID:PID scan)
-        |           |
-        |     Exclusive grab (prevents double-input)
-        |           |
-        |     Profile-based button/axis remapping
-        |           |
-        |     Deadzone, anti-deadzone & jitter filtering
-        |           |
-        |     Virtual Xbox Gamepad (via uinput)
-        |           |
-        |     Games & Steam see a normal Xbox controller
+        |         Auto-detection (sysfs VID:PID scan)
+        |         Exclusive grab — suppresses kernel events to other processes
+        |         Read/drain loop — disconnect detection only; input not processed
         |
-        +--- HID raw interface (/dev/hidrawN)
-                    |
-                    +-- Button/DPAD packets (data[2]==0x02) -> virtual gamepad
-                    |
-                    +-- Trigger packets (data[2]==0x0a) -> virtual gamepad
-                    |
-                    +-- Analog stick packets (interface 3) -> virtual gamepad
-                    |
-                    +-- Battery polling (every 60s) -> desktop notifications
-                    |
-                    +-- RGB animation engine (software, 60 fps)
-                    |
-                    +-- Rumble: game FF_RUMBLE events -> HID motor packet
-                    |
-                    +-- Keepalive (every 20s, wireless)
+        +--- HID raw — control (/dev/hidrawN, USB interface 0)
+        |         Button + DPAD packets  (data[2]==0x02)
+        |         Trigger L2/R2 packets  (data[2]==0x0a)
+        |         Battery polling (every 60s) -> desktop notifications
+        |         RGB animation engine (software, 60 fps)
+        |         Rumble: FF_RUMBLE events -> HID motor packet
+        |         Keepalive (every 20s, wireless)
+        |
+        +--- HID raw — analog (/dev/hidrawN, USB interface 3)
+                  Analog stick packets (ABS_X/Y, ABS_RX/RY)
+
+   All button, trigger, and stick events:
+        |
+        Profile-based remapping
+        |
+        Deadzone, anti-deadzone & jitter filtering
+        |
+        Virtual Xbox Gamepad (uinput) -> Games & Steam see a normal Xbox controller
 ```
 
 ---

@@ -274,30 +274,53 @@ poll_timeout_ms = 2
 # A notify-send fires on every switch showing the new layer name.
 
 # ---------------------------------------------------------------------------
-# FORMAT reference — all button names, each mapped to itself (no-op)
-# Copy and rename this section to create your own profile.
+# Default configuration — every input at its factory default.
+# Copy and rename to create your own profile.
+#
+# Button remapping: left side = physical control, right side = virtual output
+# (the output code is what the game / Steam Input sees).
+#
+# Analog axes (sticks and triggers) cannot be remapped — they always route to
+# their fixed virtual axes:  L stick → ABS_X/ABS_Y,  R stick → ABS_RX/ABS_RY
+#                            L2      → ABS_Z (0–1023), R2 → ABS_RZ (0–1023)
+# Tune deadzone, anti-deadzone, and response curves via [profile.NAME.input].
 # ---------------------------------------------------------------------------
 # [profile.MY_PROFILE]
-# A       = A          # face buttons
-# B       = B
-# X       = X
-# Y       = Y
-# LB      = LB         # shoulder buttons
-# RB      = RB
-# SELECT  = SELECT     # system (also: BACK)
-# START   = START      # system (also: MENU)
-# HOME    = HOME       # system (also: GUIDE)
-# L3      = L3         # left stick click
-# R3      = R3         # right stick click
-# P1      = P1         # rear paddle, bottom-left
-# P2      = P2         # rear paddle, bottom-right
-# P3      = P3         # rear paddle, top-left
-# P4      = P4         # rear paddle, top-right
-# S1      = S1         # SAX grip bumper, left
-# S2      = S2         # SAX grip bumper, right
-# G1      = G1
-# G2      = G2
-# G3      = G3
-# G4      = G4
-# G5      = G5
-# PROFILE = PROFILE    # profile button
+# A       = A          # → BTN_SOUTH   (face button; all games)
+# B       = B          # → BTN_EAST    (face button; all games)
+# X       = X          # → BTN_NORTH   (face button; all games)
+# Y       = Y          # → BTN_WEST    (face button; all games)
+# LB      = LB         # → BTN_TL      (shoulder; all games)
+# RB      = RB         # → BTN_TR      (shoulder; all games)
+# SELECT  = SELECT     # → BTN_SELECT  (also: BACK)
+# START   = START      # → BTN_START   (also: MENU)
+# HOME    = HOME       # → BTN_MODE    (also: GUIDE)
+# L3      = L3         # → BTN_THUMBL  (left stick click)
+# R3      = R3         # → BTN_THUMBR  (right stick click)
+# P1      = P1         # → BTN_TRIGGER_HAPPY1  (rear paddle bottom-left;  remap to use in-game)
+# P2      = P2         # → BTN_TRIGGER_HAPPY2  (rear paddle bottom-right; remap to use in-game)
+# P3      = P3         # → BTN_TRIGGER_HAPPY3  (rear paddle top-left;     remap to use in-game)
+# P4      = P4         # → BTN_TRIGGER_HAPPY4  (rear paddle top-right;    remap to use in-game)
+# S1      = S1         # → BTN_TRIGGER_HAPPY5  (SAX left grip;  remap to use in-game)
+# S2      = S2         # → BTN_TRIGGER_HAPPY6  (SAX right grip; remap to use in-game)
+# G1      = G1         # → BTN_TRIGGER_HAPPY7  (G-key; remap to use in-game)
+# G2      = G2         # → BTN_TRIGGER_HAPPY8
+# G3      = G3         # → BTN_TRIGGER_HAPPY9
+# G4      = G4         # → BTN_TRIGGER_HAPPY10
+# G5      = G5         # → BTN_TRIGGER_HAPPY11
+# PROFILE = PROFILE    # → BTN_TRIGGER_HAPPY12 (profile button; remap to use in-game)
+#
+# [profile.MY_PROFILE.input]
+# left_stick_deadzone_hw    = 2      # firmware deadzone sent to controller (0–15)
+# right_stick_deadzone_hw   = 2
+# left_trigger_deadzone_hw  = 1
+# right_trigger_deadzone_hw = 1
+# left_stick_deadzone_sw    = 200    # driver software deadzone (0–32767)
+# right_stick_deadzone_sw   = 200
+# left_trigger_deadzone_sw  = 5      # software trigger floor (0–1023)
+# right_trigger_deadzone_sw = 5
+# left_stick_anti_deadzone  = 0      # output floor for bypassing in-game deadzones (0 = off)
+# right_stick_anti_deadzone = 0
+# jitter_threshold          = 32
+# stick_response_curve      = linear # linear, aggressive, steady, relaxed, custom
+# trigger_response_curve    = linear
