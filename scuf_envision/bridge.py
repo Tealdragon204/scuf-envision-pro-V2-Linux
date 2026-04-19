@@ -265,6 +265,18 @@ class BridgeService:
         self._last_input_time = time.monotonic()
         self._dispatch_button(code, value)
 
+    def _dispatch_button(self, code: int, value: int) -> None:
+        if self._profile:
+            if value and code == self._profile.switch_button:
+                new_layer = self._profile.cycle_layer()
+                if new_layer:
+                    self._on_layer_switch(new_layer)
+                return
+            out = self._profile.effective_button_map.get(code, code)
+        else:
+            out = code
+        self.gamepad.emit_button(out, value)
+
     def _on_hid_axis(self, code: int, value: int) -> None:
         self._last_input_time = time.monotonic()
         if code == ecodes.ABS_X:

@@ -324,3 +324,136 @@ poll_timeout_ms = 2
 # jitter_threshold          = 32
 # stick_response_curve      = linear # linear, aggressive, steady, relaxed, custom
 # trigger_response_curve    = linear
+
+# ===========================================================================
+# COMPLETE EXAMPLE — full config.ini with every option shown
+# Uncomment and edit to use. This mirrors all sections above in one block.
+# ===========================================================================
+
+# [audio]
+# disabled = false
+
+# [rumble]
+# disabled = false
+
+# [battery]
+# notifications = true
+# notify_thresholds = 20,10,5,1
+
+# [rgb]
+# mode = static
+# color = 255,255,255
+# color2 = 0,0,255
+# speed = 1.0
+# brightness = 100
+# activity_tracking = false
+# idle_after = 30
+# sleep_after = 300
+
+# [rgb.active]
+# mode = static
+# color = 255,255,255
+# color2 = 0,0,255
+# speed = 1.0
+# brightness = 100
+
+# [rgb.idle]
+# mode = static
+# color = 255,255,255
+# color2 = 0,0,255
+# speed = 1.0
+# brightness = 20
+
+# [rgb.sleep]
+# mode = off
+# color = 0,0,0
+# color2 = 0,0,0
+# speed = 1.0
+# brightness = 0
+
+# [input]
+# left_stick_deadzone_hw    = 2
+# right_stick_deadzone_hw   = 2
+# left_trigger_deadzone_hw  = 1
+# right_trigger_deadzone_hw = 1
+# left_stick_deadzone_sw    = 200
+# right_stick_deadzone_sw   = 200
+# left_trigger_deadzone_sw  = 5
+# right_trigger_deadzone_sw = 5
+# left_stick_anti_deadzone  = 0
+# right_stick_anti_deadzone = 0
+# jitter_threshold          = 32
+# stick_response_curve      = linear
+# trigger_response_curve    = linear
+
+# [driver]
+# poll_timeout_ms = 2
+
+# ---------------------------------------------------------------------------
+# Profile: MY_PROFILE — full example with all buttons and analog settings
+# ---------------------------------------------------------------------------
+
+# [profile.MY_PROFILE]
+# A       = A
+# B       = B
+# X       = X
+# Y       = Y
+# LB      = LB
+# RB      = RB
+# SELECT  = SELECT
+# START   = START
+# HOME    = HOME
+# L3      = L3
+# R3      = R3
+# P1      = A            # rear paddle bottom-left  — remap to a face/shoulder button
+# P2      = B            # rear paddle bottom-right
+# P3      = LB           # rear paddle top-left
+# P4      = RB           # rear paddle top-right
+# S1      = LB           # SAX left grip
+# S2      = RB           # SAX right grip
+# G1      = SELECT
+# G2      = G2
+# G3      = G3
+# G4      = G4
+# G5      = G5
+# PROFILE = PROFILE
+
+# [profile.MY_PROFILE.input]
+# left_stick_deadzone_hw    = 2
+# right_stick_deadzone_hw   = 2
+# left_trigger_deadzone_hw  = 1
+# right_trigger_deadzone_hw = 1
+# left_stick_deadzone_sw    = 200
+# right_stick_deadzone_sw   = 200
+# left_trigger_deadzone_sw  = 5
+# right_trigger_deadzone_sw = 5
+# left_stick_anti_deadzone  = 0
+# right_stick_anti_deadzone = 0
+# jitter_threshold          = 32
+# stick_response_curve      = linear
+# trigger_response_curve    = linear
+
+# [profile.MY_PROFILE.rgb.active]
+# mode = static
+# color = 255,255,255
+# brightness = 100
+
+# [profile.MY_PROFILE.rgb.idle]
+# mode = breathe
+# color = 0,80,255
+# brightness = 40
+
+# [profile.MY_PROFILE.rgb.sleep]
+# mode = off
+
+# [profile.MY_PROFILE.layers]
+# switch_button = P3
+# stack = base,alt
+
+# [profile.MY_PROFILE.layer.base]
+# P1 = A
+# P2 = B
+
+# [profile.MY_PROFILE.layer.alt]
+# P1 = X
+# P2 = Y
