@@ -432,7 +432,7 @@ def run_hidraw_mode(discovered, show_sticks: bool = False):
     print(f"  Control hidraw: {ctrl_path}")
     if analog_path:
         print(f"  Analog hidraw:  {analog_path}"
-              + (" (showing sticks)" if show_sticks else " (sticks hidden — use --sticks)"))
+              + (" (all values, incl. jitter)" if show_sticks else " (moves > 200 shown)"))
     print()
     print("Press buttons to see events. Press Ctrl+C to exit.")
     print("=" * 60)
@@ -455,6 +455,9 @@ def run_hidraw_mode(discovered, show_sticks: bool = False):
     fds = [ctrl_fd] + ([analog_fd] if analog_fd else [])
     prev_mask = 0
     prev_dpad = {ecodes.ABS_HAT0X: 0, ecodes.ABS_HAT0Y: 0}
+    prev_sticks = [0, 0, 0, 0]   # lx, ly, rx, ry
+    prev_triggers = (-1, -1)
+    _STICK_THRESHOLD = 0 if show_sticks else 200
 
     try:
         while True:
@@ -503,16 +506,21 @@ def run_hidraw_mode(discovered, show_sticks: bool = False):
                         continue
                     left  = int.from_bytes(data[4:6], 'little')
                     right = int.from_bytes(data[6:8], 'little')
-                    print(f"AXIS:   L2 / Left Trigger               {left:>6}  (0–1023)")
-                    print(f"AXIS:   R2 / Right Trigger              {right:>6}  (0–1023)")
+                    if (left, right) != prev_triggers:
+                        print(f"AXIS:   L2 / Left Trigger               {left:>6}  (0–1023)")
+                        print(f"AXIS:   R2 / Right Trigger              {right:>6}  (0–1023)")
+                        prev_triggers = (left, right)
 
                 # Analog stick packet (interface 3)
-                elif fd == analog_fd and show_sticks and len(data) >= 9:
+                elif fd == analog_fd and len(data) >= 9:
                     lx = int.from_bytes(data[1:3], 'little', signed=True)
                     ly = int.from_bytes(data[3:5], 'little', signed=True)
                     rx = int.from_bytes(data[5:7], 'little', signed=True)
                     ry = int.from_bytes(data[7:9], 'little', signed=True)
-                    print(f"STICK:  L({lx:>7}, {ly:>7})  R({rx:>7}, {ry:>7})")
+                    cur = [lx, ly, rx, ry]
+                    if any(abs(cur[i] - prev_sticks[i]) >= _STICK_THRESHOLD for i in range(4)):
+                        print(f"STICK:  L({lx:>7}, {ly:>7})  R({rx:>7}, {ry:>7})")
+                        prev_sticks = cur
 
     except KeyboardInterrupt:
         print("\nDone.")
@@ -535,7 +543,7 @@ def run_bits_mode(discovered, show_sticks: bool = False):
         print("       Try running as root: sudo python3 tools/diag.py --bits")
         return
 
-    analog_path = discovered.hidraw_path if show_sticks else None
+    analog_path = discovered.hidraw_path
 
     print("=" * 65)
     print("Mode: BIT DISCOVERY (--bits)")
@@ -543,7 +551,8 @@ def run_bits_mode(discovered, show_sticks: bool = False):
     print("Use this to confirm paddle / SAX / G-key / Home bit assignments.")
     print(f"Control hidraw: {ctrl_path}")
     if analog_path:
-        print(f"Analog hidraw:  {analog_path} (showing sticks)")
+        print(f"Analog hidraw:  {analog_path}"
+              + (" (all stick values)" if show_sticks else " (stick moves > 200 shown)"))
     print("=" * 65)
     print()
 
@@ -562,6 +571,8 @@ def run_bits_mode(discovered, show_sticks: bool = False):
 
     prev_mask = 0
     prev_triggers = (-1, -1)
+    prev_sticks = [0, 0, 0, 0]
+    _STICK_THRESHOLD = 0 if show_sticks else 200
 
     try:
         while True:
@@ -609,7 +620,10 @@ def run_bits_mode(discovered, show_sticks: bool = False):
                     ly = int.from_bytes(data[3:5], 'little', signed=True)
                     rx = int.from_bytes(data[5:7], 'little', signed=True)
                     ry = int.from_bytes(data[7:9], 'little', signed=True)
-                    print(f"  STICK    L({lx:>7}, {ly:>7})  R({rx:>7}, {ry:>7})")
+                    cur = [lx, ly, rx, ry]
+                    if any(abs(cur[i] - prev_sticks[i]) >= _STICK_THRESHOLD for i in range(4)):
+                        print(f"  STICK    L({lx:>7}, {ly:>7})  R({rx:>7}, {ry:>7})")
+                        prev_sticks = cur
 
     except KeyboardInterrupt:
         print("\nDone.")
