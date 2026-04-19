@@ -196,6 +196,11 @@ class ControlReader:
         self._button_cb = button_cb
         self._axis_cb = axis_cb
         self._syn_cb = syn_cb
+        # Clear any stale state accumulated during RGB init (ack packets can
+        # spuriously set paddle/SAX bits, causing missed first-press events).
+        self._btn_state.clear()
+        self._dpad_state[ecodes.ABS_HAT0X] = 0
+        self._dpad_state[ecodes.ABS_HAT0Y] = 0
 
     @property
     def level(self) -> int:
