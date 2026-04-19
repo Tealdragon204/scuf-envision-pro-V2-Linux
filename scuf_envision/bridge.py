@@ -17,6 +17,7 @@ import os
 import select
 import signal
 import sys
+import threading
 import time
 
 import evdev
@@ -30,6 +31,8 @@ from .profile import ProfileManager
 from .virtual_gamepad import VirtualGamepad
 
 log = logging.getLogger(__name__)
+
+_MACRO_TAP_MS = 30.0
 
 
 class _DeviceDisconnected(Exception):
@@ -66,6 +69,7 @@ class BridgeService:
         self._running = False
         self._profile: ProfileManager | None = None
         self._ipc: IPCServer | None = ipc_server
+        self._macro_cancel: dict[int, threading.Event] = {}
 
         self._raw_left_x = 0
         self._raw_left_y = 0
@@ -258,6 +262,7 @@ class BridgeService:
                             "set_rgb": self._set_rgb_mode,
                             "on_profile_switch": self._on_profile_switch,
                             "on_layer_switch": self._on_layer_switch,
+                            "on_reload": self._on_reload,
                         }
                     )
 
@@ -272,10 +277,38 @@ class BridgeService:
                 if new_layer:
                     self._on_layer_switch(new_layer)
                 return
+            macro = self._profile.macro_map.get(code)
+            if macro:
+                if value:
+                    self._run_macro(code, macro)
+                return  # consume both press and release
             out = self._profile.effective_button_map.get(code, code)
         else:
             out = code
         self.gamepad.emit_button(out, value)
+
+    def _run_macro(self, trigger_code: int, macro) -> None:
+        """Fire a macro in a daemon thread; cancel any in-flight macro for the same trigger."""
+        if trigger_code in self._macro_cancel:
+            self._macro_cancel[trigger_code].set()
+        cancel = threading.Event()
+        self._macro_cancel[trigger_code] = cancel
+
+        def _execute():
+            for step in macro.steps:
+                if cancel.is_set():
+                    break
+                self.gamepad.emit_button(step.code, 1)
+                self.gamepad.syn()
+                hold = (step.hold_ms or _MACRO_TAP_MS) / 1000.0
+                cancelled = cancel.wait(hold)
+                self.gamepad.emit_button(step.code, 0)
+                self.gamepad.syn()
+                if cancelled:
+                    break
+
+        threading.Thread(target=_execute, daemon=True,
+                         name=f"macro-{trigger_code}").start()
 
     def _on_hid_axis(self, code: int, value: int) -> None:
         self._last_input_time = time.monotonic()
@@ -384,8 +417,18 @@ class BridgeService:
                   p['left_stick_anti_deadzone'], p['right_stick_anti_deadzone'],
                   p['jitter_threshold'])
 
+    def _on_reload(self) -> None:
+        """Re-read config.ini and rebuild ProfileManager + InputFilter in place."""
+        config = load_config()
+        old_name = self._profile.active_name if self._profile else "default"
+        new_mgr = ProfileManager.from_config(config)
+        if old_name in new_mgr.list_profiles():
+            new_mgr.switch(old_name)
+        self._profile = new_mgr
+        self._reload_input_config()
+        log.info("Config reloaded; active profile: %s", self._profile.active_name)
+
     def _on_profile_switch(self) -> None:
-        import threading
         from .hid import _notify
         self._rgb_activity_state = ''
         self._reload_input_config()
@@ -394,7 +437,6 @@ class BridgeService:
                          daemon=True).start()
 
     def _on_layer_switch(self, layer_name: str) -> None:
-        import threading
         from .hid import _notify
         threading.Thread(target=_notify,
                          args=("SCUF Layer", f"Switched to: {layer_name}"),

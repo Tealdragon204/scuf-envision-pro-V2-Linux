@@ -74,6 +74,17 @@ class LayerConfig:
     active_idx: int = 0
 
 
+@dataclass
+class MacroStep:
+    code: int       # evdev button code to emit on the virtual gamepad
+    hold_ms: float  # hold duration in ms; 0 means default tap (_DEFAULT_TAP_MS)
+
+
+@dataclass
+class Macro:
+    steps: list[MacroStep]
+
+
 def _resolve_code(name: str) -> int | None:
     """Resolve a button name to its evdev integer value.
 
@@ -92,6 +103,37 @@ def _resolve_code(name: str) -> int | None:
     return code
 
 
+_DEFAULT_TAP_MS = 30.0
+
+
+def _parse_macro(value: str) -> "Macro | None":
+    """Parse a macro step string like 'A:50,B:100,X:0' into a Macro.
+
+    Each comma-separated token is BUTTON_NAME:HOLD_MS. HOLD_MS=0 maps to the
+    default tap duration at execution time. Returns None if no valid steps.
+    """
+    steps = []
+    for token in value.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if ":" in token:
+            btn_name, _, ms_str = token.partition(":")
+            try:
+                hold_ms = float(ms_str.strip())
+            except ValueError:
+                log.warning("Macro step has invalid hold_ms %r (skipped)", token)
+                continue
+        else:
+            btn_name = token
+            hold_ms = 0.0
+        code = _resolve_code(btn_name.strip())
+        if code is None:
+            continue
+        steps.append(MacroStep(code=code, hold_ms=hold_ms))
+    return Macro(steps=steps) if steps else None
+
+
 class ProfileManager:
     """Manages named profiles and the active button remap table.
 
@@ -102,9 +144,11 @@ class ProfileManager:
     """
 
     def __init__(self, profiles: dict[str, dict[int, int]],
-                 layer_configs: dict[str, LayerConfig] | None = None):
+                 layer_configs: dict[str, LayerConfig] | None = None,
+                 macros: "dict[str, dict[int, Macro]] | None" = None):
         self._profiles = profiles
         self._layer_configs: dict[str, LayerConfig] = layer_configs or {}
+        self._macros: dict[str, dict[int, Macro]] = macros or {}
         self._active = "default"
         self._effective: dict[int, int] = dict(_BASE_MAP)
 
@@ -130,6 +174,11 @@ class ProfileManager:
     def switch_button(self) -> int | None:
         lc = self._layer_configs.get(self._active)
         return lc.switch_button if lc else None
+
+    @property
+    def macro_map(self) -> "dict[int, Macro]":
+        """Return the macro bindings for the currently active profile."""
+        return self._macros.get(self._active, {})
 
     def _rebuild_effective(self) -> None:
         overrides = self._profiles.get(self._active, {})
@@ -218,4 +267,25 @@ class ProfileManager:
                     switch_button=sw_btn, stack=stack, layers=layers)
                 log.debug("Loaded layers for profile %r: %s", name, stack)
 
-        return cls(profiles, layer_configs)
+        macros: dict[str, dict[int, Macro]] = {}
+        for name in profiles:
+            sec = f"profile.{name}.macros"
+            if not config.has_section(sec):
+                continue
+            bindings: dict[int, Macro] = {}
+            for raw_name, step_str in config[sec].items():
+                trigger = _resolve_code(raw_name)
+                if trigger is None:
+                    continue
+                macro = _parse_macro(step_str)
+                if macro is None:
+                    log.warning("Macro for %r in profile %r has no valid steps (skipped)",
+                                raw_name, name)
+                    continue
+                bindings[trigger] = macro
+                log.debug("Loaded macro: profile=%r trigger=%r steps=%d",
+                          name, raw_name, len(macro.steps))
+            if bindings:
+                macros[name] = bindings
+
+        return cls(profiles, layer_configs, macros)

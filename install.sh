@@ -80,8 +80,10 @@ echo "[5/8] Installing default config..."
 CONF_DIR="/etc/scuf-envision"
 CONF_FILE="$CONF_DIR/config.ini"
 mkdir -p "$CONF_DIR"
+CONF_SRC="$SCRIPT_DIR/config.ini"
+[ -f "$CONF_SRC" ] || CONF_SRC="$SCRIPT_DIR/config.ini.default"
 if [ ! -f "$CONF_FILE" ]; then
-    cp "$SCRIPT_DIR/config.ini.default" "$CONF_FILE"
+    cp "$CONF_SRC" "$CONF_FILE"
     echo "  Installed default config to $CONF_FILE"
 else
     echo "  Config already exists at $CONF_FILE (preserved)"

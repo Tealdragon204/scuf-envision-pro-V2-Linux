@@ -98,6 +98,13 @@ class IPCServer:
             except KeyError:
                 return f"error: unknown layer '{name}'"
 
+        if cmd == "reload":
+            cb = (extras or {}).get("on_reload")
+            if cb is None:
+                return "error: reload not available"
+            cb()
+            return "ok"
+
         if cmd.startswith("rgb "):
             set_rgb = (extras or {}).get("set_rgb")
             if set_rgb is None:
