@@ -310,17 +310,17 @@ class ControlReader:
             if now >= next_keepalive:
                 try:
                     os.write(self._fd, _packet(self._endpoint, _CMD_KEEPALIVE))
+                    log.debug("Battery keepalive sent")
                 except OSError:
-                    break
-                log.debug("Battery keepalive sent")
+                    pass  # controller temporarily unreachable; keep looping until read fails
                 next_keepalive = now + _KEEPALIVE_INTERVAL
 
             if now >= next_battery:
                 try:
                     os.write(self._fd, _packet(self._endpoint, _CMD_BATTERY))
+                    log.info("Battery poll sent")
                 except OSError:
-                    break
-                log.info("Battery poll sent")
+                    pass  # same — skip this poll, retry next interval
                 next_battery = now + _BATTERY_INTERVAL
 
     def _parse_buttons(self, data: bytes) -> None:
