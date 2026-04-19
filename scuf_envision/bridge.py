@@ -52,7 +52,7 @@ class BridgeService:
         self._ff_effects = {}
         self._ff_gain = 65535
 
-        self._battery = None
+        self._control = None
         self._analog = None
         self._rgb = None
         self._rgb_animator = None
@@ -88,19 +88,19 @@ class BridgeService:
                 self._rumble = RumbleHandler(self.discovered.hidraw_path)
 
             if self.discovered.control_hidraw_path:
-                from .hid import BatteryReader
+                from .hid import ControlReader
                 from .config import battery_notifications_enabled, battery_notify_thresholds
                 thresholds = battery_notify_thresholds() if battery_notifications_enabled() else []
-                self._battery = BatteryReader(self.discovered.control_hidraw_path,
+                self._control = ControlReader(self.discovered.control_hidraw_path,
                                               self.discovered.connection_type,
                                               notify_thresholds=thresholds)
                 try:
-                    self._battery.start()
-                    self._battery.set_input_callbacks(
+                    self._control.start()
+                    self._control.set_input_callbacks(
                         self._on_hid_button, self._on_hid_axis, self.gamepad.syn)
                 except OSError as e:
                     log.warning("Battery reader unavailable: %s", e)
-                    self._battery = None
+                    self._control = None
 
             if self.discovered.hidraw_path:
                 from .hid import AnalogListener
@@ -204,7 +204,7 @@ class BridgeService:
         """Main event loop — interrupt-driven via select, effectively 500 Hz.
 
         All input (buttons, axes, triggers) arrives via HID raw callbacks (_on_hid_button,
-        _on_hid_axis) from BatteryReader and AnalogListener threads. The physical evdev fd
+        _on_hid_axis) from ControlReader and AnalogListener threads. The physical evdev fd
         is held grabbed here only to detect disconnect and suppress double-input to other
         processes — evdev events are drained without being processed.
         """
@@ -446,7 +446,7 @@ class BridgeService:
             "connection": self.discovered.connection_type,
             "rumble": self._rumble_enabled,
             "rgb": self._rgb is not None,
-            "battery": self._battery.level if self._battery else -1,
+            "battery": self._control.level if self._control else -1,
             "pid": os.getpid(),
             "layer": self._profile.active_layer if self._profile else None,
             "layers": self._profile.active_layers if self._profile else [],
@@ -496,23 +496,23 @@ class BridgeService:
                     if discovered.control_hidraw_path:
                         init_vibration_modules(discovered.control_hidraw_path)
                     self._rumble = RumbleHandler(discovered.hidraw_path)
-                if self._battery:
-                    self._battery.close()
-                    self._battery = None
+                if self._control:
+                    self._control.close()
+                    self._control = None
                 if discovered.control_hidraw_path:
-                    from .hid import BatteryReader
+                    from .hid import ControlReader
                     from .config import battery_notifications_enabled, battery_notify_thresholds
                     thresholds = battery_notify_thresholds() if battery_notifications_enabled() else []
-                    self._battery = BatteryReader(discovered.control_hidraw_path,
+                    self._control = ControlReader(discovered.control_hidraw_path,
                                                   discovered.connection_type,
                                                   notify_thresholds=thresholds)
                     try:
-                        self._battery.start()
-                        self._battery.set_input_callbacks(
+                        self._control.start()
+                        self._control.set_input_callbacks(
                             self._on_hid_button, self._on_hid_axis, self.gamepad.syn)
                     except OSError as e:
                         log.warning("Battery reader unavailable after reconnect: %s", e)
-                        self._battery = None
+                        self._control = None
                 if self._analog:
                     self._analog.close()
                     self._analog = None
@@ -552,9 +552,9 @@ class BridgeService:
         if self._rumble:
             self._rumble.close()
             self._rumble = None
-        if self._battery:
-            self._battery.close()
-            self._battery = None
+        if self._control:
+            self._control.close()
+            self._control = None
         if self._analog:
             self._analog.close()
             self._analog = None

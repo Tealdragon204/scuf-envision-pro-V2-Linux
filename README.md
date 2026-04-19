@@ -635,10 +635,10 @@ by `data[0]` and `data[2]`:
 
 | `data[0]` | `data[2]` | Packet type | Parser |
 |---|---|---|---|
-| `0x03` | `0x02` | Button + DPAD bitmask | `BatteryReader._parse_buttons()` |
-| `0x03` | `0x0a` | Trigger axes | `BatteryReader._parse_triggers()` |
-| `0x03` | `0x01` (+ `data[3]==0x0f`) | Wireless battery (unsolicited) | `BatteryReader._parse_battery()` |
-| any | `data[3]==0x0f` | Wired battery query response | `BatteryReader._parse_battery()` |
+| `0x03` | `0x02` | Button + DPAD bitmask | `ControlReader._parse_buttons()` |
+| `0x03` | `0x0a` | Trigger axes | `ControlReader._parse_triggers()` |
+| `0x03` | `0x01` (+ `data[3]==0x0f`) | Wireless battery (unsolicited) | `ControlReader._parse_battery()` |
+| any | `data[3]==0x0f` | Wired battery query response | `ControlReader._parse_battery()` |
 | *(analog hidraw)* | — | Analog stick axes | `AnalogListener._read_loop()` |
 
 ### Button + DPAD Packet (`data[2] == 0x02`)
