@@ -332,11 +332,14 @@ class ControlReader:
         if len(data) < 7 or data[0] != 0x03 or data[2] != 0x02:
             return
         mask = int.from_bytes(data[HID_BTN_MASK_OFFSET:HID_BTN_MASK_OFFSET + 4], 'little')
+        log.debug("BTN PKT d1=0x%02x mask=0x%08x raw=%s", data[1], mask, data[:8].hex())
         changed = False
         for bit, code in HID_BUTTON_MAP.items():
             state = bool(mask & bit)
             if state != self._btn_state.get(code, False):
                 self._btn_state[code] = state
+                log.debug("  state change bit=0x%06x code=%d val=%d cb=%s",
+                          bit, code, int(state), "set" if self._button_cb else "NONE")
                 if self._button_cb:
                     self._button_cb(code, int(state))
                 changed = True
